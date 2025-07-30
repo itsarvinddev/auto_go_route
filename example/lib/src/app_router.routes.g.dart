@@ -64,7 +64,7 @@ abstract class _$AppRouter {
       GoRoute(
         path: '/',
         redirect: (context, state) {
-          if (state.matchedLocation == '/') {
+          if (state.fullPath == '/') {
             return '/home';
           }
           return null;
