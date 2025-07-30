@@ -512,7 +512,7 @@ class AutoGoRouteGenerator extends Generator {
               GoRoute(
                 path: '${info.path}',
                 redirect: (context, state) {
-                  if (state.fullPath == '${info.path}') {
+                  if (state.uri.path == '${info.path}') {
                     return '$redirectPath';
                   }
                   return null;
@@ -565,9 +565,9 @@ class AutoGoRouteGenerator extends Generator {
 
       // Push method
       final pushMethod = MethodBuilder()
-        ..name = 'pushTo$routeName'
-        ..returns = refer('void')
-        ..body = Code('push($pathCall);');
+        ..name = 'pushTo$routeName<T extends Object?>'
+        ..returns = refer('Future<T?>')
+        ..body = Code('return push<T>($pathCall);');
 
       // Replace method
       final replaceMethod = MethodBuilder()

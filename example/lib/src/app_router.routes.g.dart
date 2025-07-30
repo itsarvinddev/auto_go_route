@@ -64,7 +64,7 @@ abstract class _$AppRouter {
       GoRoute(
         path: '/',
         redirect: (context, state) {
-          if (state.fullPath == '/') {
+          if (state.uri.path == '/') {
             return '/home';
           }
           return null;
@@ -303,8 +303,10 @@ extension AutoGoRouteNavigation on BuildContext {
     go(SettingsRouteRoute().pathWith(queries: queries));
   }
 
-  void pushToSettingsRoute({Map<String, String>? queries}) {
-    push(SettingsRouteRoute().pathWith(queries: queries));
+  Future<T?> pushToSettingsRoute<T extends Object?>({
+    Map<String, String>? queries,
+  }) {
+    return push<T>(SettingsRouteRoute().pathWith(queries: queries));
   }
 
   void replaceWithSettingsRoute({Map<String, String>? queries}) {
@@ -315,8 +317,10 @@ extension AutoGoRouteNavigation on BuildContext {
     go(ProfileRouteRoute().pathWith(queries: queries));
   }
 
-  void pushToProfileRoute({Map<String, String>? queries}) {
-    push(ProfileRouteRoute().pathWith(queries: queries));
+  Future<T?> pushToProfileRoute<T extends Object?>({
+    Map<String, String>? queries,
+  }) {
+    return push<T>(ProfileRouteRoute().pathWith(queries: queries));
   }
 
   void replaceWithProfileRoute({Map<String, String>? queries}) {
@@ -327,8 +331,10 @@ extension AutoGoRouteNavigation on BuildContext {
     go(LegacyProfileRouteRoute().pathWith(queries: queries));
   }
 
-  void pushToLegacyProfileRoute({Map<String, String>? queries}) {
-    push(LegacyProfileRouteRoute().pathWith(queries: queries));
+  Future<T?> pushToLegacyProfileRoute<T extends Object?>({
+    Map<String, String>? queries,
+  }) {
+    return push<T>(LegacyProfileRouteRoute().pathWith(queries: queries));
   }
 
   void replaceWithLegacyProfileRoute({Map<String, String>? queries}) {
@@ -339,8 +345,10 @@ extension AutoGoRouteNavigation on BuildContext {
     go(LoginRouteRoute().pathWith(queries: queries));
   }
 
-  void pushToLoginRoute({Map<String, String>? queries}) {
-    push(LoginRouteRoute().pathWith(queries: queries));
+  Future<T?> pushToLoginRoute<T extends Object?>({
+    Map<String, String>? queries,
+  }) {
+    return push<T>(LoginRouteRoute().pathWith(queries: queries));
   }
 
   void replaceWithLoginRoute({Map<String, String>? queries}) {
@@ -351,8 +359,10 @@ extension AutoGoRouteNavigation on BuildContext {
     go(NewFeatureRouteRoute().pathWith(queries: queries));
   }
 
-  void pushToNewFeatureRoute({Map<String, String>? queries}) {
-    push(NewFeatureRouteRoute().pathWith(queries: queries));
+  Future<T?> pushToNewFeatureRoute<T extends Object?>({
+    Map<String, String>? queries,
+  }) {
+    return push<T>(NewFeatureRouteRoute().pathWith(queries: queries));
   }
 
   void replaceWithNewFeatureRoute({Map<String, String>? queries}) {
@@ -363,8 +373,10 @@ extension AutoGoRouteNavigation on BuildContext {
     go(ProductListRouteRoute().pathWith(queries: queries));
   }
 
-  void pushToProductListRoute({Map<String, String>? queries}) {
-    push(ProductListRouteRoute().pathWith(queries: queries));
+  Future<T?> pushToProductListRoute<T extends Object?>({
+    Map<String, String>? queries,
+  }) {
+    return push<T>(ProductListRouteRoute().pathWith(queries: queries));
   }
 
   void replaceWithProductListRoute({Map<String, String>? queries}) {
@@ -378,11 +390,13 @@ extension AutoGoRouteNavigation on BuildContext {
     go(ProductDetailsRouteRoute().pathWith(id: id, queries: queries));
   }
 
-  void pushToProductDetailsRoute({
+  Future<T?> pushToProductDetailsRoute<T extends Object?>({
     required String id,
     Map<String, String>? queries,
   }) {
-    push(ProductDetailsRouteRoute().pathWith(id: id, queries: queries));
+    return push<T>(
+      ProductDetailsRouteRoute().pathWith(id: id, queries: queries),
+    );
   }
 
   void replaceWithProductDetailsRoute({
@@ -401,11 +415,13 @@ extension AutoGoRouteNavigation on BuildContext {
     go(ProductReviewsRouteRoute().pathWith(id: id, queries: queries));
   }
 
-  void pushToProductReviewsRoute({
+  Future<T?> pushToProductReviewsRoute<T extends Object?>({
     required String id,
     Map<String, String>? queries,
   }) {
-    push(ProductReviewsRouteRoute().pathWith(id: id, queries: queries));
+    return push<T>(
+      ProductReviewsRouteRoute().pathWith(id: id, queries: queries),
+    );
   }
 
   void replaceWithProductReviewsRoute({
@@ -424,11 +440,13 @@ extension AutoGoRouteNavigation on BuildContext {
     go(ProductOffersRouteRoute().pathWith(id: id, queries: queries));
   }
 
-  void pushToProductOffersRoute({
+  Future<T?> pushToProductOffersRoute<T extends Object?>({
     required String id,
     Map<String, String>? queries,
   }) {
-    push(ProductOffersRouteRoute().pathWith(id: id, queries: queries));
+    return push<T>(
+      ProductOffersRouteRoute().pathWith(id: id, queries: queries),
+    );
   }
 
   void replaceWithProductOffersRoute({
@@ -444,8 +462,10 @@ extension AutoGoRouteNavigation on BuildContext {
     go(HomeRouteRoute().pathWith(queries: queries));
   }
 
-  void pushToHomeRoute({Map<String, String>? queries}) {
-    push(HomeRouteRoute().pathWith(queries: queries));
+  Future<T?> pushToHomeRoute<T extends Object?>({
+    Map<String, String>? queries,
+  }) {
+    return push<T>(HomeRouteRoute().pathWith(queries: queries));
   }
 
   void replaceWithHomeRoute({Map<String, String>? queries}) {

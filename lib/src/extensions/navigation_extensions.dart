@@ -28,7 +28,7 @@ extension TypeSafeNavigation on BuildContext {
   }
 
   /// Push a route with validation
-  void pushRoute(
+  Future<T?> pushRoute<T extends Object?>(
     RoutePaths route, {
     Map<String, String>? params,
     Map<String, String>? queries,
@@ -38,13 +38,13 @@ extension TypeSafeNavigation on BuildContext {
       final path = (params != null || queries != null)
           ? route.pathWithParams(params ?? {}, queries: queries)
           : route.path;
-      push(path, extra: extra);
+      return push<T>(path, extra: extra);
     } catch (e) {
       if (kDebugMode) {
         debugPrint('Push error to ${route.path}: $e');
       }
       // Fallback to base path
-      push(route.path, extra: extra);
+      return push<T>(route.path, extra: extra);
     }
   }
 
