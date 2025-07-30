@@ -26,11 +26,15 @@ class AutoGoRouteBase {
     this.initialLocation,
     this.errorBuilder,
     this.redirect,
+    this.navigatorExtensionName = 'AutoGoRouteNavigation',
   });
 
   final String? initialLocation;
   final String? errorBuilder;
   final String? redirect;
+
+  /// The name for the generated BuildContext navigation extension.
+  final String navigatorExtensionName;
 }
 
 /// Annotation for a ShellRoute

@@ -1,9 +1,8 @@
 // lib/src/presentation/screens/product_screens.dart
 import 'package:auto_go_route/auto_go_route.dart';
+import 'package:example/src/app_router.dart';
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 
-import '../../../main.dart';
 import '../widgets/route_button.dart';
 
 @AutoGoRoute(path: '/products')
@@ -20,11 +19,7 @@ class ProductListRoute extends StatelessWidget {
           final productId = 'product-${index + 1}';
           return ListTile(
             title: Text('Product ${index + 1}'),
-            onTap: () => context.push(
-              appRouter.productDetailsRouteRoute.pathWithParams({
-                'id': productId,
-              }),
-            ),
+            onTap: () => context.pushToProductDetailsRoute(id: productId),
           );
         },
       ),
@@ -35,7 +30,8 @@ class ProductListRoute extends StatelessWidget {
 @AutoGoRoute(path: '/products/:id')
 class ProductDetailsRoute extends StatelessWidget {
   final String id;
-  const ProductDetailsRoute({super.key, required this.id});
+  final String? name;
+  const ProductDetailsRoute({super.key, required this.id, this.name});
 
   @override
   Widget build(BuildContext context) {
@@ -53,18 +49,20 @@ class ProductDetailsRoute extends StatelessWidget {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 30),
+              Text(
+                'Name: ${name ?? 'N/A'}',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 30),
               RouteButton(
                 label: 'View Reviews for this Product',
-                onPressed: () => context.push(
-                  appRouter.productReviewsRouteRoute.pathWithParams({'id': id}),
-                ),
+                onPressed: () => context.pushToProductReviewsRoute(id: id),
               ),
+
               const SizedBox(height: 10),
               RouteButton(
                 label: 'View Offers for this Product',
-                onPressed: () => context.push(
-                  appRouter.productOffersRouteRoute.pathWithParams({'id': id}),
-                ),
+                onPressed: () => context.pushToProductOffersRoute(id: id),
               ),
             ],
           ),

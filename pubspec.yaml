@@ -1,11 +1,11 @@
 name: auto_go_route
-version: 1.0.1
+version: 1.0.2
 description: A powerful, type-safe, and feature-rich routing package for Flutter GoRouter with automatic code generation.
 
 homepage: https://github.com/itsarvinddev/auto_go_route
 repository: https://github.com/itsarvinddev/auto_go_route
 issue_tracker: https://github.com/itsarvinddev/auto_go_route/issues
-documentation: https://github.com/itsarvinddev/auto_go_route/wiki
+documentation: https://pub.dev/documentation/ai_barcode_scanner/latest/
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -34,6 +34,10 @@ topics:
   - auto-route
   - go-router
   - type-safety
+
+screenshots:
+  - description: "Poster of auto_go_route"
+    path: "auto_go_route.webp"
 
 funding:
   - https://github.com/sponsors/itsarvinddev

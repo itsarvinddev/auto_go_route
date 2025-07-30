@@ -9,6 +9,7 @@ import 'src/auth_service.dart';
 // Initialize services
 final authService = AuthService();
 final appRouter = AppRouter(authService: authService);
+
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(

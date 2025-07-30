@@ -64,7 +64,7 @@ abstract class _$AppRouter {
       GoRoute(
         path: '/',
         redirect: (context, state) {
-          if (state.fullPath == '/') {
+          if (state.matchedLocation == '/') {
             return '/home';
           }
           return null;
@@ -151,6 +151,10 @@ class SettingsRouteRoute extends NestedRoutePaths {
         name: 'settingsRoute',
         builder: (context, state) => SettingsRoute(),
       );
+
+  String pathWith({Map<String, String>? queries}) {
+    return pathWithParams({}, queries: queries);
+  }
 }
 
 class ProfileRouteRoute extends NestedRoutePaths {
@@ -161,6 +165,10 @@ class ProfileRouteRoute extends NestedRoutePaths {
         name: 'profileRoute',
         builder: (context, state) => ProfileRoute(),
       );
+
+  String pathWith({Map<String, String>? queries}) {
+    return pathWithParams({}, queries: queries);
+  }
 }
 
 class LegacyProfileRouteRoute extends RoutePaths {
@@ -171,6 +179,10 @@ class LegacyProfileRouteRoute extends RoutePaths {
         middleware: const [legacyProfileRedirect],
         builder: (context, state) => LegacyProfileRoute(),
       );
+
+  String pathWith({Map<String, String>? queries}) {
+    return pathWithParams({}, queries: queries);
+  }
 }
 
 class LoginRouteRoute extends RoutePaths {
@@ -180,6 +192,10 @@ class LoginRouteRoute extends RoutePaths {
         name: 'loginRoute',
         builder: (context, state) => LoginRoute(),
       );
+
+  String pathWith({Map<String, String>? queries}) {
+    return pathWithParams({}, queries: queries);
+  }
 }
 
 class NewFeatureRouteRoute extends RoutePaths {
@@ -190,6 +206,10 @@ class NewFeatureRouteRoute extends RoutePaths {
         middleware: const [featureFlagMiddleware],
         builder: (context, state) => NewFeatureRoute(),
       );
+
+  String pathWith({Map<String, String>? queries}) {
+    return pathWithParams({}, queries: queries);
+  }
 }
 
 class ProductListRouteRoute extends RoutePaths {
@@ -199,6 +219,10 @@ class ProductListRouteRoute extends RoutePaths {
         name: 'productListRoute',
         builder: (context, state) => ProductListRoute(),
       );
+
+  String pathWith({Map<String, String>? queries}) {
+    return pathWithParams({}, queries: queries);
+  }
 }
 
 class ProductDetailsRouteRoute extends RoutePaths {
@@ -206,9 +230,15 @@ class ProductDetailsRouteRoute extends RoutePaths {
     : super(
         path: '/products/:id',
         name: 'productDetailsRoute',
-        builder: (context, state) =>
-            ProductDetailsRoute(id: state.getParam<String>('id')),
+        builder: (context, state) => ProductDetailsRoute(
+          id: state.getParam<String>('id'),
+          name: state.getParam<String>('name'),
+        ),
       );
+
+  String pathWith({required String id, Map<String, String>? queries}) {
+    return pathWithParams({'id': id}, queries: queries);
+  }
 }
 
 class ProductReviewsRouteRoute extends NestedRoutePaths {
@@ -220,6 +250,10 @@ class ProductReviewsRouteRoute extends NestedRoutePaths {
         builder: (context, state) =>
             ProductReviewsRoute(id: state.getParam<String>('id')),
       );
+
+  String pathWith({required String id, Map<String, String>? queries}) {
+    return pathWithParams({'id': id}, queries: queries);
+  }
 }
 
 class ProductOffersRouteRoute extends NestedRoutePaths {
@@ -231,6 +265,10 @@ class ProductOffersRouteRoute extends NestedRoutePaths {
         builder: (context, state) =>
             ProductOffersRoute(id: state.getParam<String>('id')),
       );
+
+  String pathWith({required String id, Map<String, String>? queries}) {
+    return pathWithParams({'id': id}, queries: queries);
+  }
 }
 
 class HomeRouteRoute extends NestedRoutePaths {
@@ -243,6 +281,10 @@ class HomeRouteRoute extends NestedRoutePaths {
           featureDisabled: state.getParam<String>('featureDisabled'),
         ),
       );
+
+  String pathWith({Map<String, String>? queries}) {
+    return pathWithParams({}, queries: queries);
+  }
 }
 
 class DashboardShellRoute extends ShellRoutePaths {
@@ -254,4 +296,159 @@ class DashboardShellRoute extends ShellRoutePaths {
         builder: (context, state, child) =>
             DashboardShell(navigationShell: child as StatefulNavigationShell),
       );
+}
+
+extension AutoGoRouteNavigation on BuildContext {
+  void goToSettingsRoute({Map<String, String>? queries}) {
+    go(SettingsRouteRoute().pathWith());
+  }
+
+  void pushToSettingsRoute({Map<String, String>? queries}) {
+    push(SettingsRouteRoute().pathWith());
+  }
+
+  void replaceWithSettingsRoute({Map<String, String>? queries}) {
+    pushReplacement(SettingsRouteRoute().pathWith());
+  }
+
+  void goToProfileRoute({Map<String, String>? queries}) {
+    go(ProfileRouteRoute().pathWith());
+  }
+
+  void pushToProfileRoute({Map<String, String>? queries}) {
+    push(ProfileRouteRoute().pathWith());
+  }
+
+  void replaceWithProfileRoute({Map<String, String>? queries}) {
+    pushReplacement(ProfileRouteRoute().pathWith());
+  }
+
+  void goToLegacyProfileRoute({Map<String, String>? queries}) {
+    go(LegacyProfileRouteRoute().pathWith());
+  }
+
+  void pushToLegacyProfileRoute({Map<String, String>? queries}) {
+    push(LegacyProfileRouteRoute().pathWith());
+  }
+
+  void replaceWithLegacyProfileRoute({Map<String, String>? queries}) {
+    pushReplacement(LegacyProfileRouteRoute().pathWith());
+  }
+
+  void goToLoginRoute({Map<String, String>? queries}) {
+    go(LoginRouteRoute().pathWith());
+  }
+
+  void pushToLoginRoute({Map<String, String>? queries}) {
+    push(LoginRouteRoute().pathWith());
+  }
+
+  void replaceWithLoginRoute({Map<String, String>? queries}) {
+    pushReplacement(LoginRouteRoute().pathWith());
+  }
+
+  void goToNewFeatureRoute({Map<String, String>? queries}) {
+    go(NewFeatureRouteRoute().pathWith());
+  }
+
+  void pushToNewFeatureRoute({Map<String, String>? queries}) {
+    push(NewFeatureRouteRoute().pathWith());
+  }
+
+  void replaceWithNewFeatureRoute({Map<String, String>? queries}) {
+    pushReplacement(NewFeatureRouteRoute().pathWith());
+  }
+
+  void goToProductListRoute({Map<String, String>? queries}) {
+    go(ProductListRouteRoute().pathWith());
+  }
+
+  void pushToProductListRoute({Map<String, String>? queries}) {
+    push(ProductListRouteRoute().pathWith());
+  }
+
+  void replaceWithProductListRoute({Map<String, String>? queries}) {
+    pushReplacement(ProductListRouteRoute().pathWith());
+  }
+
+  void goToProductDetailsRoute({
+    required String id,
+    Map<String, String>? queries,
+  }) {
+    go(ProductDetailsRouteRoute().pathWith(id: id, queries: queries));
+  }
+
+  void pushToProductDetailsRoute({
+    required String id,
+    Map<String, String>? queries,
+  }) {
+    push(ProductDetailsRouteRoute().pathWith(id: id, queries: queries));
+  }
+
+  void replaceWithProductDetailsRoute({
+    required String id,
+    Map<String, String>? queries,
+  }) {
+    pushReplacement(
+      ProductDetailsRouteRoute().pathWith(id: id, queries: queries),
+    );
+  }
+
+  void goToProductReviewsRoute({
+    required String id,
+    Map<String, String>? queries,
+  }) {
+    go(ProductReviewsRouteRoute().pathWith(id: id, queries: queries));
+  }
+
+  void pushToProductReviewsRoute({
+    required String id,
+    Map<String, String>? queries,
+  }) {
+    push(ProductReviewsRouteRoute().pathWith(id: id, queries: queries));
+  }
+
+  void replaceWithProductReviewsRoute({
+    required String id,
+    Map<String, String>? queries,
+  }) {
+    pushReplacement(
+      ProductReviewsRouteRoute().pathWith(id: id, queries: queries),
+    );
+  }
+
+  void goToProductOffersRoute({
+    required String id,
+    Map<String, String>? queries,
+  }) {
+    go(ProductOffersRouteRoute().pathWith(id: id, queries: queries));
+  }
+
+  void pushToProductOffersRoute({
+    required String id,
+    Map<String, String>? queries,
+  }) {
+    push(ProductOffersRouteRoute().pathWith(id: id, queries: queries));
+  }
+
+  void replaceWithProductOffersRoute({
+    required String id,
+    Map<String, String>? queries,
+  }) {
+    pushReplacement(
+      ProductOffersRouteRoute().pathWith(id: id, queries: queries),
+    );
+  }
+
+  void goToHomeRoute({Map<String, String>? queries}) {
+    go(HomeRouteRoute().pathWith());
+  }
+
+  void pushToHomeRoute({Map<String, String>? queries}) {
+    push(HomeRouteRoute().pathWith());
+  }
+
+  void replaceWithHomeRoute({Map<String, String>? queries}) {
+    pushReplacement(HomeRouteRoute().pathWith());
+  }
 }

@@ -1,8 +1,14 @@
 # Auto Go Route
 
+[![Pub Version](https://img.shields.io/pub/v/auto_go_route?color=blue&style=plastic)](https://pub.dev/packages/auto_go_route)
+[![GitHub Repo stars](https://img.shields.io/github/stars/itsarvinddev/auto_go_route?color=gold&style=plastic)](https://github.com/itsarvinddev/auto_go_route/stargazers)
+[![GitHub Repo forks](https://img.shields.io/github/forks/itsarvinddev/auto_go_route?color=slateblue&style=plastic)](https://github.com/itsarvinddev/auto_go_route/fork)
+[![GitHub Repo issues](https://img.shields.io/github/issues/itsarvinddev/auto_go_route?color=coral&style=plastic)](https://github.com/itsarvinddev/auto_go_route/issues)
+[![GitHub Repo contributors](https://img.shields.io/github/contributors/itsarvinddev/auto_go_route?color=green&style=plastic)](https://github.com/itsarvinddev/auto_go_route/graphs/contributors)
+
 A powerful, type-safe, and feature-rich routing package for Flutter with automatic code generation. Built on top of GoRouter with enhanced developer experience and production-ready features.
 
-<img src="auto_go_route.webp" width="400" height="600">
+<img src="https://raw.githubusercontent.com/itsarvinddev/auto_go_route/refs/heads/main/auto_go_route.webp" width="400" height="600">
 
 ## Features
 
@@ -23,12 +29,12 @@ Add the following to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  auto_go_route: ^1.0.1
+  auto_go_route: ^1.0.2
   go_router: ^16.0.0
 
 dev_dependencies:
   build_runner: ^2.4.15
-  auto_go_route_generator: ^1.0.1
+  auto_go_route_generator: ^1.0.2
 ```
 
 Then run:
