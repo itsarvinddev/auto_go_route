@@ -512,7 +512,7 @@ class AutoGoRouteGenerator extends Generator {
               GoRoute(
                 path: '${info.path}',
                 redirect: (context, state) {
-                  if (state.matchedLocation == '${info.path}') {
+                  if (state.fullPath == '${info.path}') {
                     return '$redirectPath';
                   }
                   return null;

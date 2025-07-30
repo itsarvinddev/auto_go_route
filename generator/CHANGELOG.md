@@ -1,3 +1,7 @@
+## 1.0.4
+
+- Fix redirect condition in AutoGoRouteGenerator to use fullPath instead of matchedLocation for accurate routing behavior.
+
 ## 1.0.3
 
 - Queries are now optional.
