@@ -1,0 +1,4 @@
+# melos_managed_dependency_overrides: auto_go_route_generator
+dependency_overrides:
+  auto_go_route_generator:
+    path: generator

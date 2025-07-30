@@ -1,0 +1,22 @@
+targets:
+  $default:
+    builders:
+      auto_go_route_generator:auto_go_route_builder:
+        enabled: true
+        generate_for:
+          - lib/**
+          - test/**
+
+builders:
+  auto_go_route_builder:
+    import: "package:auto_go_route_generator/builder.dart"
+    builder_factories: ["autoGoRouteBuilder"]
+    build_extensions:
+      ".dart": [".routes.g.dart"]
+    auto_apply: dependents
+    build_to: source
+    required_inputs: [".dart"]
+    defaults:
+      generate_for:
+        - lib/**
+        - bin/**
