@@ -29,12 +29,12 @@ Add the following to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  auto_go_route: ^1.0.2
+  auto_go_route: ^1.0.3
   go_router: ^16.0.0
 
 dev_dependencies:
   build_runner: ^2.4.15
-  auto_go_route_generator: ^1.0.2
+  auto_go_route_generator: ^1.0.3
 ```
 
 Then run:
@@ -422,9 +422,33 @@ void goToRouteIfAuth(RoutePaths route, bool isAuth, {...}) // Conditional naviga
 void safePop([Object? result])              // Safe pop operation
 ```
 
-### Route Registry
+#### `AutoGoRouteNavigation`
 
-#### `RouteRegistry`
+A built-in extension on `BuildContext` that provides a set of methods to navigate to routes. You can rename the extension with
+`@AutoGoRouteBase` annotation.
+
+```dart
+extension AutoGoRouteNavigation on BuildContext {
+  void goToProfileRoute({Map<String, String>? queries}) {
+    go(ProfileRouteRoute().pathWith(queries: queries));
+  }
+
+  void pushToProfileRoute({Map<String, String>? queries}) {
+    push(ProfileRouteRoute().pathWith(queries: queries));
+  }
+
+  void replaceWithProfileRoute({Map<String, String>? queries}) {
+    pushReplacement(ProfileRouteRoute().pathWith(queries: queries));
+  }
+}
+
+// Usage
+context.goToProfileRoute();
+context.pushToProfileRoute();
+context.replaceWithProfileRoute();
+```
+
+### Route Registry
 
 ```dart
 void register(RoutePaths route)              // Register single route

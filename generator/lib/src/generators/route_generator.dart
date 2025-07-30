@@ -402,8 +402,9 @@ class AutoGoRouteGenerator extends Generator {
                 throw 'Parent ${r.parent} not found for ${r.className}')
         : null;
     final buffer = StringBuffer('super(');
-    if (parentInfo != null)
+    if (parentInfo != null) {
       buffer.writeln("parentPath: '${(parentInfo as dynamic).path}',");
+    }
     buffer.writeln("path: '${r.path}',");
     if (r.name != null) buffer.writeln("name: '${r.name}',");
     if (r.description != null) {
@@ -549,11 +550,8 @@ class AutoGoRouteGenerator extends Generator {
       final pathParamsCall = pathParamsList.map((p) => '$p: $p').join(', ');
       final queriesCall = 'queries: queries';
 
-      final allHelperParams = [pathParamsCall, queriesCall]
-          .where((s) =>
-              s.isNotEmpty && s != 'queries: queries' ||
-              pathParamsList.isNotEmpty)
-          .join(', ');
+      final allHelperParams =
+          [pathParamsCall, queriesCall].where((s) => s.isNotEmpty).join(', ');
 
       final pathCall = '${route.className}Route().pathWith($allHelperParams)';
 

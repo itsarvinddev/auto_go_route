@@ -1,3 +1,7 @@
+## 1.0.3
+
+- Queries are now optional.
+
 ## 1.0.2
 
 - Added support for query parameters.

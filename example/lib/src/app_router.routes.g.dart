@@ -300,75 +300,75 @@ class DashboardShellRoute extends ShellRoutePaths {
 
 extension AutoGoRouteNavigation on BuildContext {
   void goToSettingsRoute({Map<String, String>? queries}) {
-    go(SettingsRouteRoute().pathWith());
+    go(SettingsRouteRoute().pathWith(queries: queries));
   }
 
   void pushToSettingsRoute({Map<String, String>? queries}) {
-    push(SettingsRouteRoute().pathWith());
+    push(SettingsRouteRoute().pathWith(queries: queries));
   }
 
   void replaceWithSettingsRoute({Map<String, String>? queries}) {
-    pushReplacement(SettingsRouteRoute().pathWith());
+    pushReplacement(SettingsRouteRoute().pathWith(queries: queries));
   }
 
   void goToProfileRoute({Map<String, String>? queries}) {
-    go(ProfileRouteRoute().pathWith());
+    go(ProfileRouteRoute().pathWith(queries: queries));
   }
 
   void pushToProfileRoute({Map<String, String>? queries}) {
-    push(ProfileRouteRoute().pathWith());
+    push(ProfileRouteRoute().pathWith(queries: queries));
   }
 
   void replaceWithProfileRoute({Map<String, String>? queries}) {
-    pushReplacement(ProfileRouteRoute().pathWith());
+    pushReplacement(ProfileRouteRoute().pathWith(queries: queries));
   }
 
   void goToLegacyProfileRoute({Map<String, String>? queries}) {
-    go(LegacyProfileRouteRoute().pathWith());
+    go(LegacyProfileRouteRoute().pathWith(queries: queries));
   }
 
   void pushToLegacyProfileRoute({Map<String, String>? queries}) {
-    push(LegacyProfileRouteRoute().pathWith());
+    push(LegacyProfileRouteRoute().pathWith(queries: queries));
   }
 
   void replaceWithLegacyProfileRoute({Map<String, String>? queries}) {
-    pushReplacement(LegacyProfileRouteRoute().pathWith());
+    pushReplacement(LegacyProfileRouteRoute().pathWith(queries: queries));
   }
 
   void goToLoginRoute({Map<String, String>? queries}) {
-    go(LoginRouteRoute().pathWith());
+    go(LoginRouteRoute().pathWith(queries: queries));
   }
 
   void pushToLoginRoute({Map<String, String>? queries}) {
-    push(LoginRouteRoute().pathWith());
+    push(LoginRouteRoute().pathWith(queries: queries));
   }
 
   void replaceWithLoginRoute({Map<String, String>? queries}) {
-    pushReplacement(LoginRouteRoute().pathWith());
+    pushReplacement(LoginRouteRoute().pathWith(queries: queries));
   }
 
   void goToNewFeatureRoute({Map<String, String>? queries}) {
-    go(NewFeatureRouteRoute().pathWith());
+    go(NewFeatureRouteRoute().pathWith(queries: queries));
   }
 
   void pushToNewFeatureRoute({Map<String, String>? queries}) {
-    push(NewFeatureRouteRoute().pathWith());
+    push(NewFeatureRouteRoute().pathWith(queries: queries));
   }
 
   void replaceWithNewFeatureRoute({Map<String, String>? queries}) {
-    pushReplacement(NewFeatureRouteRoute().pathWith());
+    pushReplacement(NewFeatureRouteRoute().pathWith(queries: queries));
   }
 
   void goToProductListRoute({Map<String, String>? queries}) {
-    go(ProductListRouteRoute().pathWith());
+    go(ProductListRouteRoute().pathWith(queries: queries));
   }
 
   void pushToProductListRoute({Map<String, String>? queries}) {
-    push(ProductListRouteRoute().pathWith());
+    push(ProductListRouteRoute().pathWith(queries: queries));
   }
 
   void replaceWithProductListRoute({Map<String, String>? queries}) {
-    pushReplacement(ProductListRouteRoute().pathWith());
+    pushReplacement(ProductListRouteRoute().pathWith(queries: queries));
   }
 
   void goToProductDetailsRoute({
@@ -441,14 +441,14 @@ extension AutoGoRouteNavigation on BuildContext {
   }
 
   void goToHomeRoute({Map<String, String>? queries}) {
-    go(HomeRouteRoute().pathWith());
+    go(HomeRouteRoute().pathWith(queries: queries));
   }
 
   void pushToHomeRoute({Map<String, String>? queries}) {
-    push(HomeRouteRoute().pathWith());
+    push(HomeRouteRoute().pathWith(queries: queries));
   }
 
   void replaceWithHomeRoute({Map<String, String>? queries}) {
-    pushReplacement(HomeRouteRoute().pathWith());
+    pushReplacement(HomeRouteRoute().pathWith(queries: queries));
   }
 }
