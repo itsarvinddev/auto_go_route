@@ -39,14 +39,14 @@ packages:
       path: ".."
       relative: true
     source: path
-    version: "1.0.1"
+    version: "1.0.5"
   auto_go_route_generator:
     dependency: "direct dev"
     description:
       path: "../generator"
       relative: true
     source: path
-    version: "1.0.1"
+    version: "1.0.5"
   boolean_selector:
     dependency: transitive
     description:

@@ -197,6 +197,9 @@ class AutoGoRouteGenerator extends Generator {
       initialRoute: annotation.read('initialRoute').isNull
           ? null
           : annotation.read('initialRoute').stringValue,
+      order: annotation.read('order').isNull
+          ? null
+          : annotation.read('order').intValue,
     );
   }
 
@@ -504,7 +507,7 @@ class AutoGoRouteGenerator extends Generator {
               children.isNotEmpty &&
               info.isStateful) {
             final firstChild = children.first;
-            redirectPath = firstChild is RouteInfo ? firstChild.path : null;
+            redirectPath = (firstChild as dynamic).path;
           }
 
           if (redirectPath != null) {
@@ -654,6 +657,7 @@ class ShellInfo {
   final String? parent;
   final bool isStateful;
   final String? initialRoute;
+  final int? order;
 
   const ShellInfo({
     required this.className,
@@ -665,5 +669,6 @@ class ShellInfo {
     this.parent,
     required this.isStateful,
     this.initialRoute,
+    this.order,
   });
 }

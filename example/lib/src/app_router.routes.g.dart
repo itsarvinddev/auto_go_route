@@ -18,8 +18,10 @@ part of 'app_router.dart';
 // ignore_for_file: unused_element
 
 typedef _RouteRefSettingsRoute = SettingsRoute;
-typedef _RouteRefProfileRoute = ProfileRoute;
 typedef _RouteRefLegacyProfileRoute = LegacyProfileRoute;
+typedef _RouteRefProfileTab = ProfileTab;
+typedef _RouteRefSettingsTab = SettingsTab;
+typedef _RouteRefNotificationsTab = NotificationsTab;
 typedef _RouteRefLoginRoute = LoginRoute;
 typedef _RouteRefNewFeatureRoute = NewFeatureRoute;
 typedef _RouteRefProductListRoute = ProductListRoute;
@@ -28,13 +30,16 @@ typedef _RouteRefProductReviewsRoute = ProductReviewsRoute;
 typedef _RouteRefProductOffersRoute = ProductOffersRoute;
 typedef _RouteRefHomeRoute = HomeRoute;
 typedef _RouteRefDashboardShell = DashboardShell;
+typedef _RouteRefProfileRoute = ProfileRoute;
 
 abstract class _$AppRouter {
   List<RoutePaths> get allRoutes {
     return [
       settingsRouteRoute,
-      profileRouteRoute,
       legacyProfileRouteRoute,
+      profileTabRoute,
+      settingsTabRoute,
+      notificationsTabRoute,
       loginRouteRoute,
       newFeatureRouteRoute,
       productListRouteRoute,
@@ -46,7 +51,7 @@ abstract class _$AppRouter {
   }
 
   List<ShellRoutePaths> get allShells {
-    return [dashboardShellRoute];
+    return [dashboardShellRoute, profileRouteRoute];
   }
 
   List<RouteBase> _buildNestedRoutes() {
@@ -77,7 +82,15 @@ abstract class _$AppRouter {
                 routes: [homeRouteRoute.toGoRoute(routes: [])],
               ),
               StatefulShellBranch(
-                routes: [profileRouteRoute.toGoRoute(routes: [])],
+                routes: [
+                  profileRouteRoute.toShellRoute(
+                    routes: [
+                      profileTabRoute.toGoRoute(routes: []),
+                      settingsTabRoute.toGoRoute(routes: []),
+                      notificationsTabRoute.toGoRoute(routes: []),
+                    ],
+                  ),
+                ],
               ),
               StatefulShellBranch(
                 routes: [settingsRouteRoute.toGoRoute(routes: [])],
@@ -102,12 +115,20 @@ abstract class _$AppRouter {
     return SettingsRouteRoute();
   }
 
-  ProfileRouteRoute get profileRouteRoute {
-    return ProfileRouteRoute();
-  }
-
   LegacyProfileRouteRoute get legacyProfileRouteRoute {
     return LegacyProfileRouteRoute();
+  }
+
+  ProfileTabRoute get profileTabRoute {
+    return ProfileTabRoute();
+  }
+
+  SettingsTabRoute get settingsTabRoute {
+    return SettingsTabRoute();
+  }
+
+  NotificationsTabRoute get notificationsTabRoute {
+    return NotificationsTabRoute();
   }
 
   LoginRouteRoute get loginRouteRoute {
@@ -141,6 +162,10 @@ abstract class _$AppRouter {
   DashboardShellRoute get dashboardShellRoute {
     return DashboardShellRoute();
   }
+
+  ProfileRouteRoute get profileRouteRoute {
+    return ProfileRouteRoute();
+  }
 }
 
 class SettingsRouteRoute extends NestedRoutePaths {
@@ -157,20 +182,6 @@ class SettingsRouteRoute extends NestedRoutePaths {
   }
 }
 
-class ProfileRouteRoute extends NestedRoutePaths {
-  ProfileRouteRoute()
-    : super(
-        parentPath: '/',
-        path: '/profile',
-        name: 'profileRoute',
-        builder: (context, state) => ProfileRoute(),
-      );
-
-  String pathWith({Map<String, String>? queries}) {
-    return pathWithParams({}, queries: queries);
-  }
-}
-
 class LegacyProfileRouteRoute extends RoutePaths {
   LegacyProfileRouteRoute()
     : super(
@@ -178,6 +189,48 @@ class LegacyProfileRouteRoute extends RoutePaths {
         name: 'legacyProfileRoute',
         middleware: const [legacyProfileRedirect],
         builder: (context, state) => LegacyProfileRoute(),
+      );
+
+  String pathWith({Map<String, String>? queries}) {
+    return pathWithParams({}, queries: queries);
+  }
+}
+
+class ProfileTabRoute extends NestedRoutePaths {
+  ProfileTabRoute()
+    : super(
+        parentPath: '/profile-shell',
+        path: '/profile',
+        name: 'profileTab',
+        builder: (context, state) => ProfileTab(),
+      );
+
+  String pathWith({Map<String, String>? queries}) {
+    return pathWithParams({}, queries: queries);
+  }
+}
+
+class SettingsTabRoute extends NestedRoutePaths {
+  SettingsTabRoute()
+    : super(
+        parentPath: '/profile-shell',
+        path: '/settings-tab',
+        name: 'settingsTab',
+        builder: (context, state) => SettingsTab(),
+      );
+
+  String pathWith({Map<String, String>? queries}) {
+    return pathWithParams({}, queries: queries);
+  }
+}
+
+class NotificationsTabRoute extends NestedRoutePaths {
+  NotificationsTabRoute()
+    : super(
+        parentPath: '/profile-shell',
+        path: '/notifications',
+        name: 'notificationsTab',
+        builder: (context, state) => NotificationsTab(),
       );
 
   String pathWith({Map<String, String>? queries}) {
@@ -298,6 +351,16 @@ class DashboardShellRoute extends ShellRoutePaths {
       );
 }
 
+class ProfileRouteRoute extends ShellRoutePaths {
+  ProfileRouteRoute()
+    : super(
+        path: '/profile-shell',
+
+        isStateful: false,
+        builder: (context, state, child) => ProfileRoute(child: child),
+      );
+}
+
 extension AutoGoRouteNavigation on BuildContext {
   void goToSettingsRoute({Map<String, String>? queries}) {
     go(SettingsRouteRoute().pathWith(queries: queries));
@@ -313,20 +376,6 @@ extension AutoGoRouteNavigation on BuildContext {
     pushReplacement(SettingsRouteRoute().pathWith(queries: queries));
   }
 
-  void goToProfileRoute({Map<String, String>? queries}) {
-    go(ProfileRouteRoute().pathWith(queries: queries));
-  }
-
-  Future<T?> pushToProfileRoute<T extends Object?>({
-    Map<String, String>? queries,
-  }) {
-    return push<T>(ProfileRouteRoute().pathWith(queries: queries));
-  }
-
-  void replaceWithProfileRoute({Map<String, String>? queries}) {
-    pushReplacement(ProfileRouteRoute().pathWith(queries: queries));
-  }
-
   void goToLegacyProfileRoute({Map<String, String>? queries}) {
     go(LegacyProfileRouteRoute().pathWith(queries: queries));
   }
@@ -339,6 +388,48 @@ extension AutoGoRouteNavigation on BuildContext {
 
   void replaceWithLegacyProfileRoute({Map<String, String>? queries}) {
     pushReplacement(LegacyProfileRouteRoute().pathWith(queries: queries));
+  }
+
+  void goToProfileTab({Map<String, String>? queries}) {
+    go(ProfileTabRoute().pathWith(queries: queries));
+  }
+
+  Future<T?> pushToProfileTab<T extends Object?>({
+    Map<String, String>? queries,
+  }) {
+    return push<T>(ProfileTabRoute().pathWith(queries: queries));
+  }
+
+  void replaceWithProfileTab({Map<String, String>? queries}) {
+    pushReplacement(ProfileTabRoute().pathWith(queries: queries));
+  }
+
+  void goToSettingsTab({Map<String, String>? queries}) {
+    go(SettingsTabRoute().pathWith(queries: queries));
+  }
+
+  Future<T?> pushToSettingsTab<T extends Object?>({
+    Map<String, String>? queries,
+  }) {
+    return push<T>(SettingsTabRoute().pathWith(queries: queries));
+  }
+
+  void replaceWithSettingsTab({Map<String, String>? queries}) {
+    pushReplacement(SettingsTabRoute().pathWith(queries: queries));
+  }
+
+  void goToNotificationsTab({Map<String, String>? queries}) {
+    go(NotificationsTabRoute().pathWith(queries: queries));
+  }
+
+  Future<T?> pushToNotificationsTab<T extends Object?>({
+    Map<String, String>? queries,
+  }) {
+    return push<T>(NotificationsTabRoute().pathWith(queries: queries));
+  }
+
+  void replaceWithNotificationsTab({Map<String, String>? queries}) {
+    pushReplacement(NotificationsTabRoute().pathWith(queries: queries));
   }
 
   void goToLoginRoute({Map<String, String>? queries}) {

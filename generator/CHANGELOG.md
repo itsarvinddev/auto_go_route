@@ -1,3 +1,7 @@
+## 1.0.6
+
+- Add support for shell routes.
+
 ## 1.0.5
 
 - Fix pushRoute and pushToRoute methods to return Future<T?> instead of void.

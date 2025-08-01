@@ -47,6 +47,7 @@ class AutoGoRouteShell {
     this.parent,
     this.isStateful = false,
     this.initialRoute,
+    this.order,
   });
 
   final String path;
@@ -60,4 +61,7 @@ class AutoGoRouteShell {
   /// If not provided for a root shell (`path: '/'`), it defaults to the
   /// path of the first child route.
   final String? initialRoute;
+
+  /// The index of this shell when used as a branch in a StatefulShellRoute.
+  final int? order;
 }

@@ -1,3 +1,7 @@
+## 1.0.6
+
+- Enhance routing capabilities with new profile, settings, and notifications tabs; refactor ProfileRoute to use a tabbed interface.
+
 ## 1.0.5
 
 - Fix pushRoute and pushToRoute methods to return Future<T?> instead of void.

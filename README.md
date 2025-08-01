@@ -29,12 +29,12 @@ Add the following to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  auto_go_route: ^1.0.3
+  auto_go_route: ^1.0.6
   go_router: ^16.0.0
 
 dev_dependencies:
   build_runner: ^2.4.15
-  auto_go_route_generator: ^1.0.3
+  auto_go_route_generator: ^1.0.6
 ```
 
 Then run:
@@ -51,11 +51,7 @@ flutter pub get
 import 'package:flutter/material.dart';
 import 'package:auto_go_route/auto_go_route.dart';
 
-@AutoGoRoute(
-  path: '/login',
-  name: 'login',
-  description: 'User login page',
-)
+@AutoGoRoute(path: '/login')
 class LoginPage extends StatelessWidget {
   const LoginPage({super.key});
 
@@ -84,7 +80,15 @@ part 'app_router.g.dart'; // Add this line
 )
 class AppRouter extends _$AppRouter {
   List<RouteBase> get routes => _buildNestedRoutes();
-  GoRouter get router => buildRouter();
+
+  // GoRouter get router => buildRouter();
+
+  /// You can also set own router
+  GoRouter get router => GoRouter(
+    routes: routes,
+    initialLocation: '/home',
+    errorBuilder: (context, state) => ErrorScreen(error: state.error),
+  );
 }
 ```
 
@@ -115,6 +119,16 @@ final userPath = routes.userProfileRoute.pathWith(
   tab: 'settings',
 );
 context.go(userPath);
+
+context.pushToUserProfileRoute(params: {
+  'userId': 'user123',
+  'tab': 'settings',
+});
+
+context.replaceWithUserProfileRoute(params: {
+  'userId': 'user123',
+  'tab': 'settings',
+});
 ```
 
 ## Advanced Usage
@@ -122,11 +136,7 @@ context.go(userPath);
 ### Routes with Parameters
 
 ```dart
-@AutoGoRoute(
-  path: '/user/:userId/profile/:tab?',
-  name: 'userProfile',
-  description: 'User profile with optional tab',
-)
+@AutoGoRoute(path: '/user/:userId/profile/:tab?')
 class UserProfilePage extends StatelessWidget {
   final String userId;
   final String? tab;
