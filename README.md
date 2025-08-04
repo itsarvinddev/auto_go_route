@@ -29,12 +29,12 @@ Add the following to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  auto_go_route: ^1.0.6
+  auto_go_route: ^1.0.7
   go_router: ^16.0.0
 
 dev_dependencies:
   build_runner: ^2.4.15
-  auto_go_route_generator: ^1.0.6
+  auto_go_route_generator: ^1.0.7
 ```
 
 Then run:
@@ -120,15 +120,21 @@ final userPath = routes.userProfileRoute.pathWith(
 );
 context.go(userPath);
 
-context.pushToUserProfileRoute(params: {
-  'userId': 'user123',
-  'tab': 'settings',
-});
+context.pushToUserProfileRoute(
+  params: {
+    'userId': 'user123',
+    'tab': 'settings',
+   },
+  extra: User(id: 'user123', name: 'John Doe', email: 'john.doe@example.com'),
+);
 
-context.replaceWithUserProfileRoute(params: {
-  'userId': 'user123',
-  'tab': 'settings',
-});
+context.replaceWithUserProfileRoute(
+  params: {
+    'userId': 'user123',
+    'tab': 'settings',
+  },
+  extra: User(id: 'user123', name: 'John Doe', email: 'john.doe@example.com'),
+);
 ```
 
 ## Advanced Usage
@@ -140,11 +146,13 @@ context.replaceWithUserProfileRoute(params: {
 class UserProfilePage extends StatelessWidget {
   final String userId;
   final String? tab;
+  final User? user;
 
   const UserProfilePage({
     super.key,
     required this.userId,
     this.tab,
+    this.user,
   });
 
   @override
@@ -155,6 +163,7 @@ class UserProfilePage extends StatelessWidget {
         children: [
           Text('User ID: $userId'),
           if (tab != null) Text('Tab: $tab'),
+          Text('User Details: ${user?.toJson().toString() ?? 'N/A'}'),
         ],
       ),
     );

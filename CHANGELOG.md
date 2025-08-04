@@ -1,3 +1,8 @@
+## 1.0.7
+
+- Add support for extra parameters.
+- Fix nested routes.
+
 ## 1.0.6
 
 - Enhance routing capabilities with new profile, settings, and notifications tabs; refactor ProfileRoute to use a tabbed interface.

@@ -1,5 +1,5 @@
 name: auto_go_route
-version: 1.0.6
+version: 1.0.7
 description: A powerful, type-safe, and feature-rich routing package for Flutter GoRouter with automatic code generation.
 
 homepage: https://github.com/itsarvinddev/auto_go_route

@@ -22,6 +22,8 @@ typedef _RouteRefLegacyProfileRoute = LegacyProfileRoute;
 typedef _RouteRefProfileTab = ProfileTab;
 typedef _RouteRefSettingsTab = SettingsTab;
 typedef _RouteRefNotificationsTab = NotificationsTab;
+typedef _RouteRefNotificationDetail = NotificationDetail;
+typedef _RouteRefNotificationAction = NotificationAction;
 typedef _RouteRefLoginRoute = LoginRoute;
 typedef _RouteRefNewFeatureRoute = NewFeatureRoute;
 typedef _RouteRefProductListRoute = ProductListRoute;
@@ -40,6 +42,8 @@ abstract class _$AppRouter {
       profileTabRoute,
       settingsTabRoute,
       notificationsTabRoute,
+      notificationDetailRoute,
+      notificationActionRoute,
       loginRouteRoute,
       newFeatureRouteRoute,
       productListRouteRoute,
@@ -87,7 +91,15 @@ abstract class _$AppRouter {
                     routes: [
                       profileTabRoute.toGoRoute(routes: []),
                       settingsTabRoute.toGoRoute(routes: []),
-                      notificationsTabRoute.toGoRoute(routes: []),
+                      notificationsTabRoute.toGoRoute(
+                        routes: [
+                          notificationDetailRoute.toGoRoute(
+                            routes: [
+                              notificationActionRoute.toGoRoute(routes: []),
+                            ],
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ],
@@ -131,6 +143,14 @@ abstract class _$AppRouter {
     return NotificationsTabRoute();
   }
 
+  NotificationDetailRoute get notificationDetailRoute {
+    return NotificationDetailRoute();
+  }
+
+  NotificationActionRoute get notificationActionRoute {
+    return NotificationActionRoute();
+  }
+
   LoginRouteRoute get loginRouteRoute {
     return LoginRouteRoute();
   }
@@ -171,7 +191,7 @@ abstract class _$AppRouter {
 class SettingsRouteRoute extends NestedRoutePaths {
   SettingsRouteRoute()
     : super(
-        parentPath: '/',
+        parentPath: '',
         path: '/settings',
         name: 'settingsRoute',
         builder: (context, state) => SettingsRoute(),
@@ -199,7 +219,7 @@ class LegacyProfileRouteRoute extends RoutePaths {
 class ProfileTabRoute extends NestedRoutePaths {
   ProfileTabRoute()
     : super(
-        parentPath: '/profile-shell',
+        parentPath: '',
         path: '/profile',
         name: 'profileTab',
         builder: (context, state) => ProfileTab(),
@@ -213,7 +233,7 @@ class ProfileTabRoute extends NestedRoutePaths {
 class SettingsTabRoute extends NestedRoutePaths {
   SettingsTabRoute()
     : super(
-        parentPath: '/profile-shell',
+        parentPath: '',
         path: '/settings-tab',
         name: 'settingsTab',
         builder: (context, state) => SettingsTab(),
@@ -227,7 +247,7 @@ class SettingsTabRoute extends NestedRoutePaths {
 class NotificationsTabRoute extends NestedRoutePaths {
   NotificationsTabRoute()
     : super(
-        parentPath: '/profile-shell',
+        parentPath: '',
         path: '/notifications',
         name: 'notificationsTab',
         builder: (context, state) => NotificationsTab(),
@@ -235,6 +255,38 @@ class NotificationsTabRoute extends NestedRoutePaths {
 
   String pathWith({Map<String, String>? queries}) {
     return pathWithParams({}, queries: queries);
+  }
+}
+
+class NotificationDetailRoute extends NestedRoutePaths {
+  NotificationDetailRoute()
+    : super(
+        parentPath: '/notifications',
+        path: '/:id',
+        name: 'notificationDetail',
+        builder: (context, state) => NotificationDetail(
+          id: state.getParam<String>('id'),
+          user: state.extra as User?,
+        ),
+      );
+
+  String pathWith({required String id, Map<String, String>? queries}) {
+    return pathWithParams({'id': id}, queries: queries);
+  }
+}
+
+class NotificationActionRoute extends NestedRoutePaths {
+  NotificationActionRoute()
+    : super(
+        parentPath: '/notifications/:id',
+        path: '/action',
+        name: 'notificationAction',
+        builder: (context, state) =>
+            NotificationAction(action: state.getParam<String>('action')),
+      );
+
+  String pathWith({required String id, Map<String, String>? queries}) {
+    return pathWithParams({'id': id}, queries: queries);
   }
 }
 
@@ -286,6 +338,7 @@ class ProductDetailsRouteRoute extends RoutePaths {
         builder: (context, state) => ProductDetailsRoute(
           id: state.getParam<String>('id'),
           name: state.getParam<String>('name'),
+          product: state.extra as Product?,
         ),
       );
 
@@ -327,7 +380,7 @@ class ProductOffersRouteRoute extends NestedRoutePaths {
 class HomeRouteRoute extends NestedRoutePaths {
   HomeRouteRoute()
     : super(
-        parentPath: '/',
+        parentPath: '',
         path: '/home',
         name: 'homeRoute',
         builder: (context, state) => HomeRoute(
@@ -362,204 +415,348 @@ class ProfileRouteRoute extends ShellRoutePaths {
 }
 
 extension AutoGoRouteNavigation on BuildContext {
-  void goToSettingsRoute({Map<String, String>? queries}) {
-    go(SettingsRouteRoute().pathWith(queries: queries));
+  void goToSettingsRoute({Map<String, String>? queries, Object? extra}) {
+    go(SettingsRouteRoute().pathWith(queries: queries), extra: extra);
   }
 
   Future<T?> pushToSettingsRoute<T extends Object?>({
     Map<String, String>? queries,
+    Object? extra,
   }) {
-    return push<T>(SettingsRouteRoute().pathWith(queries: queries));
+    return push<T>(
+      SettingsRouteRoute().pathWith(queries: queries),
+      extra: extra,
+    );
   }
 
-  void replaceWithSettingsRoute({Map<String, String>? queries}) {
-    pushReplacement(SettingsRouteRoute().pathWith(queries: queries));
+  void replaceWithSettingsRoute({Map<String, String>? queries, Object? extra}) {
+    pushReplacement(
+      SettingsRouteRoute().pathWith(queries: queries),
+      extra: extra,
+    );
   }
 
-  void goToLegacyProfileRoute({Map<String, String>? queries}) {
-    go(LegacyProfileRouteRoute().pathWith(queries: queries));
+  void goToLegacyProfileRoute({Map<String, String>? queries, Object? extra}) {
+    go(LegacyProfileRouteRoute().pathWith(queries: queries), extra: extra);
   }
 
   Future<T?> pushToLegacyProfileRoute<T extends Object?>({
     Map<String, String>? queries,
+    Object? extra,
   }) {
-    return push<T>(LegacyProfileRouteRoute().pathWith(queries: queries));
+    return push<T>(
+      LegacyProfileRouteRoute().pathWith(queries: queries),
+      extra: extra,
+    );
   }
 
-  void replaceWithLegacyProfileRoute({Map<String, String>? queries}) {
-    pushReplacement(LegacyProfileRouteRoute().pathWith(queries: queries));
+  void replaceWithLegacyProfileRoute({
+    Map<String, String>? queries,
+    Object? extra,
+  }) {
+    pushReplacement(
+      LegacyProfileRouteRoute().pathWith(queries: queries),
+      extra: extra,
+    );
   }
 
-  void goToProfileTab({Map<String, String>? queries}) {
-    go(ProfileTabRoute().pathWith(queries: queries));
+  void goToProfileTab({Map<String, String>? queries, Object? extra}) {
+    go(ProfileTabRoute().pathWith(queries: queries), extra: extra);
   }
 
   Future<T?> pushToProfileTab<T extends Object?>({
     Map<String, String>? queries,
+    Object? extra,
   }) {
-    return push<T>(ProfileTabRoute().pathWith(queries: queries));
+    return push<T>(ProfileTabRoute().pathWith(queries: queries), extra: extra);
   }
 
-  void replaceWithProfileTab({Map<String, String>? queries}) {
-    pushReplacement(ProfileTabRoute().pathWith(queries: queries));
+  void replaceWithProfileTab({Map<String, String>? queries, Object? extra}) {
+    pushReplacement(ProfileTabRoute().pathWith(queries: queries), extra: extra);
   }
 
-  void goToSettingsTab({Map<String, String>? queries}) {
-    go(SettingsTabRoute().pathWith(queries: queries));
+  void goToSettingsTab({Map<String, String>? queries, Object? extra}) {
+    go(SettingsTabRoute().pathWith(queries: queries), extra: extra);
   }
 
   Future<T?> pushToSettingsTab<T extends Object?>({
     Map<String, String>? queries,
+    Object? extra,
   }) {
-    return push<T>(SettingsTabRoute().pathWith(queries: queries));
+    return push<T>(SettingsTabRoute().pathWith(queries: queries), extra: extra);
   }
 
-  void replaceWithSettingsTab({Map<String, String>? queries}) {
-    pushReplacement(SettingsTabRoute().pathWith(queries: queries));
+  void replaceWithSettingsTab({Map<String, String>? queries, Object? extra}) {
+    pushReplacement(
+      SettingsTabRoute().pathWith(queries: queries),
+      extra: extra,
+    );
   }
 
-  void goToNotificationsTab({Map<String, String>? queries}) {
-    go(NotificationsTabRoute().pathWith(queries: queries));
+  void goToNotificationsTab({Map<String, String>? queries, Object? extra}) {
+    go(NotificationsTabRoute().pathWith(queries: queries), extra: extra);
   }
 
   Future<T?> pushToNotificationsTab<T extends Object?>({
     Map<String, String>? queries,
+    Object? extra,
   }) {
-    return push<T>(NotificationsTabRoute().pathWith(queries: queries));
+    return push<T>(
+      NotificationsTabRoute().pathWith(queries: queries),
+      extra: extra,
+    );
   }
 
-  void replaceWithNotificationsTab({Map<String, String>? queries}) {
-    pushReplacement(NotificationsTabRoute().pathWith(queries: queries));
+  void replaceWithNotificationsTab({
+    Map<String, String>? queries,
+    Object? extra,
+  }) {
+    pushReplacement(
+      NotificationsTabRoute().pathWith(queries: queries),
+      extra: extra,
+    );
   }
 
-  void goToLoginRoute({Map<String, String>? queries}) {
-    go(LoginRouteRoute().pathWith(queries: queries));
+  void goToNotificationDetail({
+    required String id,
+    Map<String, String>? queries,
+    Object? extra,
+  }) {
+    go(
+      NotificationDetailRoute().pathWith(id: id, queries: queries),
+      extra: extra,
+    );
+  }
+
+  Future<T?> pushToNotificationDetail<T extends Object?>({
+    required String id,
+    Map<String, String>? queries,
+    Object? extra,
+  }) {
+    return push<T>(
+      NotificationDetailRoute().pathWith(id: id, queries: queries),
+      extra: extra,
+    );
+  }
+
+  void replaceWithNotificationDetail({
+    required String id,
+    Map<String, String>? queries,
+    Object? extra,
+  }) {
+    pushReplacement(
+      NotificationDetailRoute().pathWith(id: id, queries: queries),
+      extra: extra,
+    );
+  }
+
+  void goToNotificationAction({
+    required String id,
+    Map<String, String>? queries,
+    Object? extra,
+  }) {
+    go(
+      NotificationActionRoute().pathWith(id: id, queries: queries),
+      extra: extra,
+    );
+  }
+
+  Future<T?> pushToNotificationAction<T extends Object?>({
+    required String id,
+    Map<String, String>? queries,
+    Object? extra,
+  }) {
+    return push<T>(
+      NotificationActionRoute().pathWith(id: id, queries: queries),
+      extra: extra,
+    );
+  }
+
+  void replaceWithNotificationAction({
+    required String id,
+    Map<String, String>? queries,
+    Object? extra,
+  }) {
+    pushReplacement(
+      NotificationActionRoute().pathWith(id: id, queries: queries),
+      extra: extra,
+    );
+  }
+
+  void goToLoginRoute({Map<String, String>? queries, Object? extra}) {
+    go(LoginRouteRoute().pathWith(queries: queries), extra: extra);
   }
 
   Future<T?> pushToLoginRoute<T extends Object?>({
     Map<String, String>? queries,
+    Object? extra,
   }) {
-    return push<T>(LoginRouteRoute().pathWith(queries: queries));
+    return push<T>(LoginRouteRoute().pathWith(queries: queries), extra: extra);
   }
 
-  void replaceWithLoginRoute({Map<String, String>? queries}) {
-    pushReplacement(LoginRouteRoute().pathWith(queries: queries));
+  void replaceWithLoginRoute({Map<String, String>? queries, Object? extra}) {
+    pushReplacement(LoginRouteRoute().pathWith(queries: queries), extra: extra);
   }
 
-  void goToNewFeatureRoute({Map<String, String>? queries}) {
-    go(NewFeatureRouteRoute().pathWith(queries: queries));
+  void goToNewFeatureRoute({Map<String, String>? queries, Object? extra}) {
+    go(NewFeatureRouteRoute().pathWith(queries: queries), extra: extra);
   }
 
   Future<T?> pushToNewFeatureRoute<T extends Object?>({
     Map<String, String>? queries,
+    Object? extra,
   }) {
-    return push<T>(NewFeatureRouteRoute().pathWith(queries: queries));
+    return push<T>(
+      NewFeatureRouteRoute().pathWith(queries: queries),
+      extra: extra,
+    );
   }
 
-  void replaceWithNewFeatureRoute({Map<String, String>? queries}) {
-    pushReplacement(NewFeatureRouteRoute().pathWith(queries: queries));
+  void replaceWithNewFeatureRoute({
+    Map<String, String>? queries,
+    Object? extra,
+  }) {
+    pushReplacement(
+      NewFeatureRouteRoute().pathWith(queries: queries),
+      extra: extra,
+    );
   }
 
-  void goToProductListRoute({Map<String, String>? queries}) {
-    go(ProductListRouteRoute().pathWith(queries: queries));
+  void goToProductListRoute({Map<String, String>? queries, Object? extra}) {
+    go(ProductListRouteRoute().pathWith(queries: queries), extra: extra);
   }
 
   Future<T?> pushToProductListRoute<T extends Object?>({
     Map<String, String>? queries,
+    Object? extra,
   }) {
-    return push<T>(ProductListRouteRoute().pathWith(queries: queries));
+    return push<T>(
+      ProductListRouteRoute().pathWith(queries: queries),
+      extra: extra,
+    );
   }
 
-  void replaceWithProductListRoute({Map<String, String>? queries}) {
-    pushReplacement(ProductListRouteRoute().pathWith(queries: queries));
+  void replaceWithProductListRoute({
+    Map<String, String>? queries,
+    Object? extra,
+  }) {
+    pushReplacement(
+      ProductListRouteRoute().pathWith(queries: queries),
+      extra: extra,
+    );
   }
 
   void goToProductDetailsRoute({
     required String id,
     Map<String, String>? queries,
+    Object? extra,
   }) {
-    go(ProductDetailsRouteRoute().pathWith(id: id, queries: queries));
+    go(
+      ProductDetailsRouteRoute().pathWith(id: id, queries: queries),
+      extra: extra,
+    );
   }
 
   Future<T?> pushToProductDetailsRoute<T extends Object?>({
     required String id,
     Map<String, String>? queries,
+    Object? extra,
   }) {
     return push<T>(
       ProductDetailsRouteRoute().pathWith(id: id, queries: queries),
+      extra: extra,
     );
   }
 
   void replaceWithProductDetailsRoute({
     required String id,
     Map<String, String>? queries,
+    Object? extra,
   }) {
     pushReplacement(
       ProductDetailsRouteRoute().pathWith(id: id, queries: queries),
+      extra: extra,
     );
   }
 
   void goToProductReviewsRoute({
     required String id,
     Map<String, String>? queries,
+    Object? extra,
   }) {
-    go(ProductReviewsRouteRoute().pathWith(id: id, queries: queries));
+    go(
+      ProductReviewsRouteRoute().pathWith(id: id, queries: queries),
+      extra: extra,
+    );
   }
 
   Future<T?> pushToProductReviewsRoute<T extends Object?>({
     required String id,
     Map<String, String>? queries,
+    Object? extra,
   }) {
     return push<T>(
       ProductReviewsRouteRoute().pathWith(id: id, queries: queries),
+      extra: extra,
     );
   }
 
   void replaceWithProductReviewsRoute({
     required String id,
     Map<String, String>? queries,
+    Object? extra,
   }) {
     pushReplacement(
       ProductReviewsRouteRoute().pathWith(id: id, queries: queries),
+      extra: extra,
     );
   }
 
   void goToProductOffersRoute({
     required String id,
     Map<String, String>? queries,
+    Object? extra,
   }) {
-    go(ProductOffersRouteRoute().pathWith(id: id, queries: queries));
+    go(
+      ProductOffersRouteRoute().pathWith(id: id, queries: queries),
+      extra: extra,
+    );
   }
 
   Future<T?> pushToProductOffersRoute<T extends Object?>({
     required String id,
     Map<String, String>? queries,
+    Object? extra,
   }) {
     return push<T>(
       ProductOffersRouteRoute().pathWith(id: id, queries: queries),
+      extra: extra,
     );
   }
 
   void replaceWithProductOffersRoute({
     required String id,
     Map<String, String>? queries,
+    Object? extra,
   }) {
     pushReplacement(
       ProductOffersRouteRoute().pathWith(id: id, queries: queries),
+      extra: extra,
     );
   }
 
-  void goToHomeRoute({Map<String, String>? queries}) {
-    go(HomeRouteRoute().pathWith(queries: queries));
+  void goToHomeRoute({Map<String, String>? queries, Object? extra}) {
+    go(HomeRouteRoute().pathWith(queries: queries), extra: extra);
   }
 
   Future<T?> pushToHomeRoute<T extends Object?>({
     Map<String, String>? queries,
+    Object? extra,
   }) {
-    return push<T>(HomeRouteRoute().pathWith(queries: queries));
+    return push<T>(HomeRouteRoute().pathWith(queries: queries), extra: extra);
   }
 
-  void replaceWithHomeRoute({Map<String, String>? queries}) {
-    pushReplacement(HomeRouteRoute().pathWith(queries: queries));
+  void replaceWithHomeRoute({Map<String, String>? queries, Object? extra}) {
+    pushReplacement(HomeRouteRoute().pathWith(queries: queries), extra: extra);
   }
 }

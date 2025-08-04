@@ -1,3 +1,8 @@
+## 1.0.7
+
+- Add support for extra parameters.
+- Fix nested routes.
+
 ## 1.0.6
 
 - Add support for shell routes.

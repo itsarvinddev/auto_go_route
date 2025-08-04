@@ -142,15 +142,18 @@ class AutoGoRouteGenerator extends Generator {
     final constructor = element.unnamedConstructor;
     final params = constructor?.parameters ?? [];
 
-    // Note: We only extract local params here. Full params are resolved later.
     final pathParams = GeneratorUtils.extractParametersFromPath(path);
 
-    final requiredParamSet = pathParams.required.toSet();
-    final constructorParamSet = params.map((e) => e.name).toSet();
-    final missing = requiredParamSet.difference(constructorParamSet);
-    if (missing.isNotEmpty) {
+    // This validation is now more complex because params can come from `extra`
+    // We'll validate that path params have a corresponding constructor arg
+    final constructorParamNames = params.map((p) => p.name).toSet();
+    final pathParamNames =
+        {...pathParams.required, ...pathParams.optional}.toSet();
+    final missingPathParams = pathParamNames.difference(constructorParamNames);
+
+    if (missingPathParams.isNotEmpty) {
       throw InvalidGenerationSourceError(
-        'Missing constructor parameters for path: ${missing.join(', ')}',
+        'The following path parameters do not have corresponding constructor arguments: ${missingPathParams.join(', ')}',
         element: element,
       );
     }
@@ -214,23 +217,42 @@ class AutoGoRouteGenerator extends Generator {
     return input[0].toUpperCase() + input.substring(1);
   }
 
-  Map<String, List<String>> _getFullParameters(
-      dynamic route, Map<String, dynamic> infoMap) {
-    final required = <String>{};
-    final optional = <String>{};
+  String _resolveNavigableFullPath(dynamic info, Map<String, dynamic> infoMap) {
+    if (info == null) return '';
 
-    dynamic current = route;
+    final ancestors = <dynamic>[];
+    dynamic current = info;
     while (current != null) {
-      final path = current.path as String;
-      final params = GeneratorUtils.extractParametersFromPath(path);
-      required.addAll(params.required);
-      optional.addAll(params.optional);
-
+      ancestors.insert(0, current);
       current = (current as dynamic).parent != null
-          ? infoMap[(current as dynamic).parent]
+          ? infoMap[(current).parent]
           : null;
     }
-    return {'required': required.toList(), 'optional': optional.toList()};
+
+    String currentPath = '';
+    for (final ancestor in ancestors) {
+      if (ancestor is! ShellInfo) {
+        final path = (ancestor as dynamic).path as String;
+        final effectiveParent = currentPath.endsWith('/')
+            ? currentPath.substring(0, currentPath.length - 1)
+            : currentPath;
+        final effectivePath = path.startsWith('/') ? path.substring(1) : path;
+
+        if (effectiveParent.isEmpty || effectiveParent == '/') {
+          currentPath = '/$effectivePath';
+        } else {
+          currentPath = '$effectiveParent/$effectivePath';
+        }
+      }
+    }
+    return currentPath.replaceAll('//', '/');
+  }
+
+  Map<String, List<String>> _getFullParameters(
+      dynamic route, Map<String, dynamic> infoMap) {
+    final fullPath = _resolveNavigableFullPath(route, infoMap);
+    final params = GeneratorUtils.extractParametersFromPath(fullPath);
+    return {'required': params.required, 'optional': params.optional};
   }
 
   Future<String> _generateRouteBase(
@@ -341,7 +363,7 @@ class AutoGoRouteGenerator extends Generator {
       b.extend =
           refer(route.parent != null ? 'NestedRoutePaths' : 'RoutePaths');
       b.constructors.add(Constructor((c) {
-        c.initializers.add(Code(_generateRouteSuperCall(route, allInfos)));
+        c.initializers.add(Code(_generateRouteSuperCall(route, infoMap)));
       }));
 
       final fullParams = _getFullParameters(route, infoMap);
@@ -398,15 +420,12 @@ class AutoGoRouteGenerator extends Generator {
     return method.build();
   }
 
-  String _generateRouteSuperCall(RouteInfo r, List<dynamic> all) {
-    final parentInfo = r.parent != null
-        ? all.firstWhere((e) => (e as dynamic).className == r.parent,
-            orElse: () =>
-                throw 'Parent ${r.parent} not found for ${r.className}')
-        : null;
+  String _generateRouteSuperCall(RouteInfo r, Map<String, dynamic> infoMap) {
     final buffer = StringBuffer('super(');
-    if (parentInfo != null) {
-      buffer.writeln("parentPath: '${(parentInfo as dynamic).path}',");
+    if (r.parent != null) {
+      final parentInfo = infoMap[r.parent];
+      final fullParentPath = _resolveNavigableFullPath(parentInfo, infoMap);
+      buffer.writeln("parentPath: '$fullParentPath',");
     }
     buffer.writeln("path: '${r.path}',");
     if (r.name != null) buffer.writeln("name: '${r.name}',");
@@ -423,11 +442,22 @@ class AutoGoRouteGenerator extends Generator {
 
   String _generateBuilderFunction(RouteInfo r) {
     final buffer = StringBuffer('(context, state) => ${r.className}(');
+    final simpleTypes = {'String', 'int', 'double', 'bool'};
+
     final args = r.constructorParams.where((p) => p.name != 'key').map((p) {
-      final type = p.type.toString().replaceAll('?', '');
-      final access = "state.getParam<$type>('${p.name}')";
+      final typeName = p.type.getDisplayString(withNullability: false);
+      final fullTypeName = p.type.getDisplayString(withNullability: true);
+      final String access;
+
+      if (simpleTypes.any((t) => typeName.startsWith(t))) {
+        access = "state.getParam<$typeName>('${p.name}')";
+      } else {
+        access = "state.extra as $fullTypeName";
+      }
+
       return p.isNamed ? '${p.name}: $access' : access;
     }).join(', ');
+
     buffer.write(args);
     buffer.write(')');
     return buffer.toString();
@@ -507,7 +537,7 @@ class AutoGoRouteGenerator extends Generator {
               children.isNotEmpty &&
               info.isStateful) {
             final firstChild = children.first;
-            redirectPath = (firstChild as dynamic).path;
+            redirectPath = _resolveNavigableFullPath(firstChild, infoMap);
           }
 
           if (redirectPath != null) {
@@ -560,23 +590,33 @@ class AutoGoRouteGenerator extends Generator {
 
       final routeName = _toUpperCamelCase(route.name ?? route.className);
 
+      final extraParam = Parameter((p) => p
+        ..name = 'extra'
+        ..named = true
+        ..type = refer('Object?'));
+
+      final queriesParam = Parameter((p) => p
+        ..name = 'queries'
+        ..named = true
+        ..type = refer('Map<String, String>?'));
+
       // Go method
       final goMethod = MethodBuilder()
         ..name = 'goTo$routeName'
         ..returns = refer('void')
-        ..body = Code('go($pathCall);');
+        ..body = Code('go($pathCall, extra: extra);');
 
       // Push method
       final pushMethod = MethodBuilder()
         ..name = 'pushTo$routeName<T extends Object?>'
         ..returns = refer('Future<T?>')
-        ..body = Code('return push<T>($pathCall);');
+        ..body = Code('return push<T>($pathCall, extra: extra);');
 
       // Replace method
       final replaceMethod = MethodBuilder()
         ..name = 'replaceWith$routeName'
         ..returns = refer('void')
-        ..body = Code('pushReplacement($pathCall);');
+        ..body = Code('pushReplacement($pathCall, extra: extra);');
 
       for (final method in [goMethod, pushMethod, replaceMethod]) {
         for (final paramName in requiredParams) {
@@ -593,10 +633,8 @@ class AutoGoRouteGenerator extends Generator {
             ..type = refer('String?')));
         }
 
-        method.optionalParameters.add(Parameter((p) => p
-          ..name = 'queries'
-          ..named = true
-          ..type = refer('Map<String, String>?')));
+        method.optionalParameters.add(queriesParam);
+        method.optionalParameters.add(extraParam);
 
         extension.methods.add(method.build());
       }

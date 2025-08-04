@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../auth_service.dart';
+import '../models/product.dart';
 import '../widgets/route_button.dart';
 import 'dashboard_shell.dart';
 
@@ -63,6 +64,13 @@ class HomeRoute extends StatelessWidget {
             onPressed: () => context.pushToProductDetailsRoute(
               id: '123',
               queries: {'name': 'Product 123'},
+              extra: Product(
+                id: '123',
+                name: 'Product 123',
+                description: 'Description of Product 123',
+                image: 'https://via.placeholder.com/150',
+                price: '100',
+              ),
             ),
           ),
           RouteButton(

@@ -3,6 +3,7 @@ import 'package:auto_go_route/auto_go_route.dart';
 import 'package:example/src/app_router.dart';
 import 'package:flutter/material.dart';
 
+import '../models/product.dart';
 import '../widgets/route_button.dart';
 
 @AutoGoRoute(path: '/products')
@@ -31,7 +32,13 @@ class ProductListRoute extends StatelessWidget {
 class ProductDetailsRoute extends StatelessWidget {
   final String id;
   final String? name;
-  const ProductDetailsRoute({super.key, required this.id, this.name});
+  final Product? product;
+  const ProductDetailsRoute({
+    super.key,
+    required this.id,
+    this.name,
+    this.product,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -52,6 +59,11 @@ class ProductDetailsRoute extends StatelessWidget {
               Text(
                 'Name: ${name ?? 'N/A'}',
                 style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 30),
+              Text(
+                'Product Details: ${product?.toJson().toString() ?? 'N/A'}',
+                style: Theme.of(context).textTheme.bodyMedium,
               ),
               const SizedBox(height: 30),
               RouteButton(

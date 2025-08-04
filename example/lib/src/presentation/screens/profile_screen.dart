@@ -1,8 +1,10 @@
 // lib/src/presentation/screens/profile_screen.dart
 import 'package:auto_go_route/auto_go_route.dart';
+import 'package:example/src/app_router.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../models/user.dart';
 import 'dashboard_shell.dart';
 
 @AutoGoRouteShell(path: '/profile-shell', parent: DashboardShell, order: 1)
@@ -106,6 +108,106 @@ class NotificationsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(child: Text('Notifications'));
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text('Notifications'),
+        ElevatedButton(
+          onPressed: () {
+            context.pushToNotificationDetail(
+              id: "N3424",
+              extra: User(
+                id: "U3424",
+                name: "John Doe",
+                email: "john.doe@example.com",
+              ),
+            );
+          },
+          child: const Text('Go to Notification 1'),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            context.pushToNotificationAction(
+              id: "N3424",
+              queries: {"action": "read"},
+            );
+          },
+          child: const Text('Go to Notification 1 Action (read)'),
+        ),
+      ],
+    );
+  }
+}
+
+@AutoGoRoute(path: '/:id', parent: NotificationsTab)
+class NotificationDetail extends StatelessWidget {
+  final String id;
+  final User? user;
+  const NotificationDetail({super.key, required this.id, this.user});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.notifications, size: 80, color: Colors.blueAccent),
+            SizedBox(height: 16),
+            Text('Notification Detail: $id'),
+            ElevatedButton(
+              onPressed: () {
+                context.pushToNotificationAction(
+                  id: id,
+                  queries: {"action": "read"},
+                );
+              },
+              child: const Text('Action'),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'User Details: ${user?.toJson().toString() ?? 'N/A'}',
+              style: Theme.of(context).textTheme.bodyMedium,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () {
+                context.pop();
+              },
+              child: const Text('Back to Notifications'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+@AutoGoRoute(path: '/action', parent: NotificationDetail)
+class NotificationAction extends StatelessWidget {
+  final String action;
+  const NotificationAction({super.key, required this.action});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.notifications, size: 80, color: Colors.blueAccent),
+            SizedBox(height: 16),
+            Text('Notification Action: $action'),
+            ElevatedButton(
+              onPressed: () {
+                context.pop();
+              },
+              child: const Text('Back to Notification Detail'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

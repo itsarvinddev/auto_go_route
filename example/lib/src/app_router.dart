@@ -8,6 +8,8 @@ import 'package:go_router/go_router.dart';
 
 import '../main.dart';
 import 'auth_service.dart';
+import 'presentation/models/product.dart';
+import 'presentation/models/user.dart';
 import 'presentation/screens/dashboard_shell.dart';
 import 'presentation/screens/error_screen.dart';
 import 'presentation/screens/feature_screen.dart';
