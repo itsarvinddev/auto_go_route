@@ -48,6 +48,7 @@ class AutoGoRouteShell {
     this.isStateful = false,
     this.initialRoute,
     this.order,
+    this.pageBuilder,
   });
 
   final String path;
@@ -64,4 +65,10 @@ class AutoGoRouteShell {
 
   /// The index of this shell when used as a branch in a StatefulShellRoute.
   final int? order;
+
+  /// The name of a top-level or static function that returns a `Page`
+  /// to customize the shell's appearance and transition.
+  /// e.g., 'adaptiveOverlayPageBuilder'.
+  /// Only applicable when `isStateful` is false.
+  final String? pageBuilder;
 }

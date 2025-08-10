@@ -10,7 +10,12 @@ import '../models/product.dart';
 import '../widgets/route_button.dart';
 import 'dashboard_shell.dart';
 
-@AutoGoRoute(path: '/home', parent: DashboardShell, order: 0)
+@AutoGoRoute(
+  path: '/home-screen',
+  parent: DashboardShell,
+  order: 0,
+  name: 'homeRoute',
+)
 class HomeRoute extends StatelessWidget {
   final String? featureDisabled;
 
@@ -47,6 +52,12 @@ class HomeRoute extends StatelessWidget {
             },
           ),
         ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          context.pushToBottomSheetContent();
+        },
+        child: const Icon(Icons.add),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16.0),

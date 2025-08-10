@@ -1,3 +1,8 @@
+## 1.0.8
+
+- Add support for pageBuilder.
+- Enhance routing capabilities with new bottom sheet navigation features
+
 ## 1.0.7
 
 - Add support for extra parameters.

@@ -26,6 +26,8 @@ typedef _RouteRefNotificationDetail = NotificationDetail;
 typedef _RouteRefNotificationAction = NotificationAction;
 typedef _RouteRefLoginRoute = LoginRoute;
 typedef _RouteRefNewFeatureRoute = NewFeatureRoute;
+typedef _RouteRefBottomSheetContent = BottomSheetContent;
+typedef _RouteRefBottomSheetNextRoute = BottomSheetNextRoute;
 typedef _RouteRefProductListRoute = ProductListRoute;
 typedef _RouteRefProductDetailsRoute = ProductDetailsRoute;
 typedef _RouteRefProductReviewsRoute = ProductReviewsRoute;
@@ -33,6 +35,7 @@ typedef _RouteRefProductOffersRoute = ProductOffersRoute;
 typedef _RouteRefHomeRoute = HomeRoute;
 typedef _RouteRefDashboardShell = DashboardShell;
 typedef _RouteRefProfileRoute = ProfileRoute;
+typedef _RouteRefBottomSheetRoute = BottomSheetRoute;
 
 abstract class _$AppRouter {
   List<RoutePaths> get allRoutes {
@@ -46,6 +49,8 @@ abstract class _$AppRouter {
       notificationActionRoute,
       loginRouteRoute,
       newFeatureRouteRoute,
+      bottomSheetContentRoute,
+      bottomSheetNextRouteRoute,
       productListRouteRoute,
       productDetailsRouteRoute,
       productReviewsRouteRoute,
@@ -55,7 +60,7 @@ abstract class _$AppRouter {
   }
 
   List<ShellRoutePaths> get allShells {
-    return [dashboardShellRoute, profileRouteRoute];
+    return [dashboardShellRoute, profileRouteRoute, bottomSheetRouteRoute];
   }
 
   List<RouteBase> _buildNestedRoutes() {
@@ -70,11 +75,18 @@ abstract class _$AppRouter {
           productOffersRouteRoute.toGoRoute(routes: []),
         ],
       ),
+      ShellRoute(
+        pageBuilder: adaptiveOverlayPageBuilder,
+        routes: [
+          bottomSheetContentRoute.toGoRoute(routes: []),
+          bottomSheetNextRouteRoute.toGoRoute(routes: []),
+        ],
+      ),
       GoRoute(
         path: '/',
         redirect: (context, state) {
           if (state.uri.path == '/') {
-            return '/home';
+            return '/home-screen';
           }
           return null;
         },
@@ -159,6 +171,14 @@ abstract class _$AppRouter {
     return NewFeatureRouteRoute();
   }
 
+  BottomSheetContentRoute get bottomSheetContentRoute {
+    return BottomSheetContentRoute();
+  }
+
+  BottomSheetNextRouteRoute get bottomSheetNextRouteRoute {
+    return BottomSheetNextRouteRoute();
+  }
+
   ProductListRouteRoute get productListRouteRoute {
     return ProductListRouteRoute();
   }
@@ -185,6 +205,10 @@ abstract class _$AppRouter {
 
   ProfileRouteRoute get profileRouteRoute {
     return ProfileRouteRoute();
+  }
+
+  BottomSheetRouteRoute get bottomSheetRouteRoute {
+    return BottomSheetRouteRoute();
   }
 }
 
@@ -317,6 +341,34 @@ class NewFeatureRouteRoute extends RoutePaths {
   }
 }
 
+class BottomSheetContentRoute extends NestedRoutePaths {
+  BottomSheetContentRoute()
+    : super(
+        parentPath: '',
+        path: '/content',
+        name: 'bottomSheetContent',
+        builder: (context, state) => BottomSheetContent(),
+      );
+
+  String pathWith({Map<String, String>? queries}) {
+    return pathWithParams({}, queries: queries);
+  }
+}
+
+class BottomSheetNextRouteRoute extends NestedRoutePaths {
+  BottomSheetNextRouteRoute()
+    : super(
+        parentPath: '',
+        path: '/next',
+        name: 'bottomSheetNext',
+        builder: (context, state) => BottomSheetNextRoute(),
+      );
+
+  String pathWith({Map<String, String>? queries}) {
+    return pathWithParams({}, queries: queries);
+  }
+}
+
 class ProductListRouteRoute extends RoutePaths {
   ProductListRouteRoute()
     : super(
@@ -381,7 +433,7 @@ class HomeRouteRoute extends NestedRoutePaths {
   HomeRouteRoute()
     : super(
         parentPath: '',
-        path: '/home',
+        path: '/home-screen',
         name: 'homeRoute',
         builder: (context, state) => HomeRoute(
           featureDisabled: state.getParam<String>('featureDisabled'),
@@ -411,6 +463,17 @@ class ProfileRouteRoute extends ShellRoutePaths {
 
         isStateful: false,
         builder: (context, state, child) => ProfileRoute(child: child),
+      );
+}
+
+class BottomSheetRouteRoute extends ShellRoutePaths {
+  BottomSheetRouteRoute()
+    : super(
+        path: '/bottom-sheet',
+        name: 'bottomSheetRoute',
+
+        isStateful: false,
+        builder: (context, state, child) => BottomSheetRoute(child: child),
       );
 }
 
@@ -618,6 +681,54 @@ extension AutoGoRouteNavigation on BuildContext {
   }) {
     pushReplacement(
       NewFeatureRouteRoute().pathWith(queries: queries),
+      extra: extra,
+    );
+  }
+
+  void goToBottomSheetContent({Map<String, String>? queries, Object? extra}) {
+    go(BottomSheetContentRoute().pathWith(queries: queries), extra: extra);
+  }
+
+  Future<T?> pushToBottomSheetContent<T extends Object?>({
+    Map<String, String>? queries,
+    Object? extra,
+  }) {
+    return push<T>(
+      BottomSheetContentRoute().pathWith(queries: queries),
+      extra: extra,
+    );
+  }
+
+  void replaceWithBottomSheetContent({
+    Map<String, String>? queries,
+    Object? extra,
+  }) {
+    pushReplacement(
+      BottomSheetContentRoute().pathWith(queries: queries),
+      extra: extra,
+    );
+  }
+
+  void goToBottomSheetNext({Map<String, String>? queries, Object? extra}) {
+    go(BottomSheetNextRouteRoute().pathWith(queries: queries), extra: extra);
+  }
+
+  Future<T?> pushToBottomSheetNext<T extends Object?>({
+    Map<String, String>? queries,
+    Object? extra,
+  }) {
+    return push<T>(
+      BottomSheetNextRouteRoute().pathWith(queries: queries),
+      extra: extra,
+    );
+  }
+
+  void replaceWithBottomSheetNext({
+    Map<String, String>? queries,
+    Object? extra,
+  }) {
+    pushReplacement(
+      BottomSheetNextRouteRoute().pathWith(queries: queries),
       extra: extra,
     );
   }

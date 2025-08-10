@@ -40,6 +40,7 @@ class AutoGoRouteGenerator extends Generator {
     }
 
     try {
+      // Phase 1: Discovery
       final allRoutes = await _findAllRoutes(buildStep);
       final allShells = await _findAllShells(buildStep);
 
@@ -50,10 +51,13 @@ class AutoGoRouteGenerator extends Generator {
         );
       }
 
-      _validateRouteNames(allRoutes, element);
+      // Phase 2: Graph Resolution
+      final resolvedGraph = _resolveRouteGraph(allRoutes, allShells);
+
+      // Phase 3: Code Generation
+      _validateRouteNames(resolvedGraph.routes, element);
       final baseInfo = _extractBaseInfo(element, annotatedElement.annotation);
-      final generatedCode =
-          await _generateRouteBase(baseInfo, allRoutes, allShells);
+      final generatedCode = await _generateRouteBase(baseInfo, resolvedGraph);
 
       return DartFormatter(languageVersion: DartFormatter.latestLanguageVersion)
           .format(generatedCode);
@@ -65,10 +69,10 @@ class AutoGoRouteGenerator extends Generator {
     }
   }
 
-  void _validateRouteNames(List<RouteInfo> routes, Element element) {
+  void _validateRouteNames(List<ResolvedRouteInfo> routes, Element element) {
     final seen = <String>{};
     for (final route in routes) {
-      final name = route.name ?? _toLowerCamelCase(route.className);
+      final name = route.info.name ?? _toLowerCamelCase(route.info.className);
       if (!seen.add(name)) {
         throw InvalidGenerationSourceError(
           'Duplicate route name: $name. Route names must be unique.',
@@ -76,6 +80,41 @@ class AutoGoRouteGenerator extends Generator {
         );
       }
     }
+  }
+
+  RouteGraph _resolveRouteGraph(
+      List<RouteInfo> routes, List<ShellInfo> shells) {
+    final allInfos = <dynamic>[...routes, ...shells];
+    final Map<String, dynamic> infoMap = {
+      for (var i in allInfos) (i as dynamic).className: i
+    };
+
+    final resolvedRoutes = routes.map((route) {
+      final fullPath = _resolveNavigableFullPath(route, infoMap);
+      final fullParams = GeneratorUtils.extractParametersFromPath(fullPath);
+      final parentInfo = route.parent != null ? infoMap[route.parent] : null;
+      final parentNavigablePath =
+          _resolveNavigableFullPath(parentInfo, infoMap);
+
+      return ResolvedRouteInfo(
+        info: route,
+        navigableFullPath: fullPath,
+        fullRequiredParams: fullParams.required,
+        fullOptionalParams: fullParams.optional,
+        parentNavigablePath: parentNavigablePath,
+      );
+    }).toList();
+
+    final resolvedShells = shells.map((shell) {
+      if (shell.pageBuilder != null && shell.isStateful) {
+        throw InvalidGenerationSourceError(
+          '`pageBuilder` cannot be used with a stateful shell route. Please set `isStateful: false` for shell: ${shell.className}.',
+        );
+      }
+      return ResolvedShellInfo(info: shell);
+    }).toList();
+
+    return RouteGraph(routes: resolvedRoutes, shells: resolvedShells);
   }
 
   Future<List<T>> _findAllAnnotatedElements<T>(
@@ -144,8 +183,6 @@ class AutoGoRouteGenerator extends Generator {
 
     final pathParams = GeneratorUtils.extractParametersFromPath(path);
 
-    // This validation is now more complex because params can come from `extra`
-    // We'll validate that path params have a corresponding constructor arg
     final constructorParamNames = params.map((p) => p.name).toSet();
     final pathParamNames =
         {...pathParams.required, ...pathParams.optional}.toSet();
@@ -203,6 +240,9 @@ class AutoGoRouteGenerator extends Generator {
       order: annotation.read('order').isNull
           ? null
           : annotation.read('order').intValue,
+      pageBuilder: annotation.read('pageBuilder').isNull
+          ? null
+          : annotation.read('pageBuilder').stringValue,
     );
   }
 
@@ -248,26 +288,13 @@ class AutoGoRouteGenerator extends Generator {
     return currentPath.replaceAll('//', '/');
   }
 
-  Map<String, List<String>> _getFullParameters(
-      dynamic route, Map<String, dynamic> infoMap) {
-    final fullPath = _resolveNavigableFullPath(route, infoMap);
-    final params = GeneratorUtils.extractParametersFromPath(fullPath);
-    return {'required': params.required, 'optional': params.optional};
-  }
-
   Future<String> _generateRouteBase(
     RouteBaseInfo baseInfo,
-    List<RouteInfo> routes,
-    List<ShellInfo> shells,
+    RouteGraph graph,
   ) async {
-    final allInfos = <dynamic>[...routes, ...shells];
-    final Map<String, dynamic> infoMap = {
-      for (var i in allInfos) (i as dynamic).className: i
-    };
-
     final allWidgetClassNames = {
-      ...routes.map((r) => r.className),
-      ...shells.map((s) => s.className)
+      ...graph.routes.map((r) => r.info.className),
+      ...graph.shells.map((s) => s.info.className)
     };
     final typeDefs = allWidgetClassNames.map((className) {
       return TypeDef((b) => b
@@ -279,10 +306,10 @@ class AutoGoRouteGenerator extends Generator {
       b.ignoreForFile.add('unused_element');
       b.body.addAll([
         ...typeDefs,
-        _generateBaseClass(baseInfo, routes, shells),
-        ...routes.map((r) => _generateRouteClass(r, allInfos, infoMap)),
-        ...shells.map(_generateShellClass),
-        _generateBuildContextExtension(baseInfo, routes, infoMap),
+        _generateBaseClass(baseInfo, graph),
+        ...graph.routes.map((r) => _generateRouteClass(r)),
+        ...graph.shells.map((s) => _generateShellClass(s.info)),
+        _generateBuildContextExtension(baseInfo, graph),
       ]);
     });
 
@@ -295,8 +322,7 @@ class AutoGoRouteGenerator extends Generator {
 
   Class _generateBaseClass(
     RouteBaseInfo baseInfo,
-    List<RouteInfo> routes,
-    List<ShellInfo> shells,
+    RouteGraph graph,
   ) {
     return Class((b) {
       b.name = '_\$${baseInfo.className}';
@@ -307,27 +333,25 @@ class AutoGoRouteGenerator extends Generator {
           ..returns = refer('List<RoutePaths>')
           ..type = MethodType.getter
           ..body = Code(
-              'return [${routes.map((r) => '${_toLowerCamelCase(r.className)}Route').join(', ')}];')),
+              'return [${graph.routes.map((r) => '${_toLowerCamelCase(r.info.className)}Route').join(', ')}];')),
         Method((m) => m
           ..name = 'allShells'
           ..returns = refer('List<ShellRoutePaths>')
           ..type = MethodType.getter
           ..body = Code(
-              'return [${shells.map((s) => '${_toLowerCamelCase(s.className)}Route').join(', ')}];')),
-        _generateBuildNestedRoutesMethod(routes, shells, {
-          for (var i in [...routes, ...shells]) (i as dynamic).className: i
-        }),
+              'return [${graph.shells.map((s) => '${_toLowerCamelCase(s.info.className)}Route').join(', ')}];')),
+        _generateBuildNestedRoutesMethod(graph),
         _generateBuildRouterMethod(baseInfo),
-        ...routes.map((r) => Method((m) => m
-          ..name = '${_toLowerCamelCase(r.className)}Route'
+        ...graph.routes.map((r) => Method((m) => m
+          ..name = '${_toLowerCamelCase(r.info.className)}Route'
           ..type = MethodType.getter
-          ..returns = refer('${r.className}Route')
-          ..body = Code('return ${r.className}Route();'))),
-        ...shells.map((s) => Method((m) => m
-          ..name = '${_toLowerCamelCase(s.className)}Route'
+          ..returns = refer('${r.info.className}Route')
+          ..body = Code('return ${r.info.className}Route();'))),
+        ...graph.shells.map((s) => Method((m) => m
+          ..name = '${_toLowerCamelCase(s.info.className)}Route'
           ..type = MethodType.getter
-          ..returns = refer('${s.className}Route')
-          ..body = Code('return ${s.className}Route();'))),
+          ..returns = refer('${s.info.className}Route')
+          ..body = Code('return ${s.info.className}Route();'))),
       ]);
     });
   }
@@ -356,20 +380,19 @@ class AutoGoRouteGenerator extends Generator {
     });
   }
 
-  Class _generateRouteClass(
-      RouteInfo route, List<dynamic> allInfos, Map<String, dynamic> infoMap) {
+  Class _generateRouteClass(ResolvedRouteInfo resolvedRoute) {
     return Class((b) {
-      b.name = '${route.className}Route';
-      b.extend =
-          refer(route.parent != null ? 'NestedRoutePaths' : 'RoutePaths');
+      b.name = '${resolvedRoute.info.className}Route';
+      b.extend = refer(resolvedRoute.info.parent != null
+          ? 'NestedRoutePaths'
+          : 'RoutePaths');
       b.constructors.add(Constructor((c) {
-        c.initializers.add(Code(_generateRouteSuperCall(route, infoMap)));
+        c.initializers.add(Code(_generateRouteSuperCall(resolvedRoute)));
       }));
 
-      final fullParams = _getFullParameters(route, infoMap);
       final pathWithMethod = _generatePathWithMethod(
-        fullParams['required']!,
-        fullParams['optional']!,
+        resolvedRoute.fullRequiredParams,
+        resolvedRoute.fullOptionalParams,
       );
       b.methods.add(pathWithMethod);
     });
@@ -420,12 +443,11 @@ class AutoGoRouteGenerator extends Generator {
     return method.build();
   }
 
-  String _generateRouteSuperCall(RouteInfo r, Map<String, dynamic> infoMap) {
+  String _generateRouteSuperCall(ResolvedRouteInfo resolvedRoute) {
+    final r = resolvedRoute.info;
     final buffer = StringBuffer('super(');
     if (r.parent != null) {
-      final parentInfo = infoMap[r.parent];
-      final fullParentPath = _resolveNavigableFullPath(parentInfo, infoMap);
-      buffer.writeln("parentPath: '$fullParentPath',");
+      buffer.writeln("parentPath: '${resolvedRoute.parentNavigablePath}',");
     }
     buffer.writeln("path: '${r.path}',");
     if (r.name != null) buffer.writeln("name: '${r.name}',");
@@ -490,21 +512,27 @@ class AutoGoRouteGenerator extends Generator {
     ''';
   }
 
-  Method _generateBuildNestedRoutesMethod(List<RouteInfo> routes,
-      List<ShellInfo> shells, Map<String, dynamic> infoMap) {
+  Method _generateBuildNestedRoutesMethod(
+    RouteGraph graph,
+  ) {
     return Method((b) {
       b.name = '_buildNestedRoutes';
       b.returns = refer('List<RouteBase>');
 
+      final allResolved = <dynamic>[...graph.routes, ...graph.shells];
+      final Map<String, dynamic> infoMap = {
+        for (var i in allResolved) (i.info as dynamic).className: i.info
+      };
+
       final childrenMap = <String, List<dynamic>>{};
       final topLevel = <dynamic>[];
 
-      for (final i in [...routes, ...shells]) {
-        final parent = (i as dynamic).parent;
+      for (final i in allResolved) {
+        final parent = (i.info as dynamic).parent;
         if (parent != null && infoMap.containsKey(parent)) {
-          childrenMap.putIfAbsent(parent, () => []).add(i);
+          childrenMap.putIfAbsent(parent, () => []).add(i.info);
         } else {
-          topLevel.add(i);
+          topLevel.add(i.info);
         }
       }
 
@@ -516,36 +544,60 @@ class AutoGoRouteGenerator extends Generator {
             .compareTo((b as dynamic).order ?? 999));
 
         if (info is ShellInfo) {
-          final String shellItselfCode;
+          final childRoutesCode = children.map(build).join(',');
+
+          if (info.pageBuilder != null) {
+            return '''
+              ShellRoute(
+                pageBuilder: ${info.pageBuilder},
+                routes: [$childRoutesCode],
+              )
+            ''';
+          }
+
           if (info.isStateful) {
             final branchesCode = children
                 .map(
                     (child) => 'StatefulShellBranch(routes: [${build(child)}])')
                 .join(',');
-            shellItselfCode =
-                'StatefulShellRoute.indexedStack(builder: $instance.builder, branches: [$branchesCode])';
+            return 'StatefulShellRoute.indexedStack(builder: $instance.builder, branches: [$branchesCode])';
           } else {
-            final childRoutesCode = children.map(build).join(',');
-            shellItselfCode =
-                '$instance.toShellRoute(routes: [$childRoutesCode])';
+            return '$instance.toShellRoute(routes: [$childRoutesCode])';
           }
+        } else {
+          // RouteInfo
+          final childRoutesCode = children.map(build).join(',');
+          return '$instance.toGoRoute(routes: [$childRoutesCode])';
+        }
+      }
 
-          final isRootShell = info.path == '/';
-          String? redirectPath = info.initialRoute;
-          if (redirectPath == null &&
-              isRootShell &&
-              children.isNotEmpty &&
-              info.isStateful) {
-            final firstChild = children.first;
-            redirectPath = _resolveNavigableFullPath(firstChild, infoMap);
-          }
+      final topLevelRoutes = topLevel.map(build).toList();
+      final rootShellInfo = graph.shells
+          .cast<ResolvedShellInfo?>()
+          .firstWhere((s) => s?.info.path == '/', orElse: () => null);
 
-          if (redirectPath != null) {
-            return '''
+      if (rootShellInfo != null) {
+        final rootShell = rootShellInfo.info;
+        final childrenOfRoot = childrenMap[rootShell.className] ?? [];
+        childrenOfRoot.sort((a, b) => ((a as dynamic).order ?? 999)
+            .compareTo((b as dynamic).order ?? 999));
+
+        String? redirectPath = rootShell.initialRoute;
+        if (redirectPath == null && childrenOfRoot.isNotEmpty) {
+          redirectPath =
+              _resolveNavigableFullPath(childrenOfRoot.first, infoMap);
+        }
+
+        final shellItselfCode = build(rootShell);
+
+        if (redirectPath != null) {
+          topLevelRoutes.removeWhere((r) => r.contains(
+              "builder: ${_toLowerCamelCase(rootShell.className)}Route.builder"));
+          final wrapper = '''
               GoRoute(
-                path: '${info.path}',
+                path: '${rootShell.path}',
                 redirect: (context, state) {
-                  if (state.uri.path == '${info.path}') {
+                  if (state.uri.path == '${rootShell.path}') {
                     return '$redirectPath';
                   }
                   return null;
@@ -555,29 +607,25 @@ class AutoGoRouteGenerator extends Generator {
                 ],
               )
             ''';
-          }
-
-          return shellItselfCode;
-        } else {
-          final childRoutesCode = children.map(build).join(',');
-          return '$instance.toGoRoute(routes: [$childRoutesCode])';
+          topLevelRoutes.add(wrapper);
         }
       }
 
-      b.body = Code('return [${topLevel.map(build).join(',')}];');
+      b.body = Code('return [${topLevelRoutes.join(',')}];');
     });
   }
 
-  Extension _generateBuildContextExtension(RouteBaseInfo baseInfo,
-      List<RouteInfo> routes, Map<String, dynamic> infoMap) {
+  Extension _generateBuildContextExtension(
+    RouteBaseInfo baseInfo,
+    RouteGraph graph,
+  ) {
     final extension = ExtensionBuilder()
       ..name = baseInfo.navigatorExtensionName
       ..on = refer('BuildContext');
 
-    for (final route in routes) {
-      final fullParams = _getFullParameters(route, infoMap);
-      final requiredParams = fullParams['required']!;
-      final optionalParams = fullParams['optional']!;
+    for (final route in graph.routes) {
+      final requiredParams = route.fullRequiredParams;
+      final optionalParams = route.fullOptionalParams;
 
       final pathParamsList = [...requiredParams, ...optionalParams];
       final pathParamsCall = pathParamsList.map((p) => '$p: $p').join(', ');
@@ -586,9 +634,11 @@ class AutoGoRouteGenerator extends Generator {
       final allHelperParams =
           [pathParamsCall, queriesCall].where((s) => s.isNotEmpty).join(', ');
 
-      final pathCall = '${route.className}Route().pathWith($allHelperParams)';
+      final pathCall =
+          '${route.info.className}Route().pathWith($allHelperParams)';
 
-      final routeName = _toUpperCamelCase(route.name ?? route.className);
+      final routeName =
+          _toUpperCamelCase(route.info.name ?? route.info.className);
 
       final extraParam = Parameter((p) => p
         ..name = 'extra'
@@ -643,6 +693,33 @@ class AutoGoRouteGenerator extends Generator {
   }
 }
 
+class RouteGraph {
+  final List<ResolvedRouteInfo> routes;
+  final List<ResolvedShellInfo> shells;
+  RouteGraph({required this.routes, required this.shells});
+}
+
+class ResolvedRouteInfo {
+  final RouteInfo info;
+  final String navigableFullPath;
+  final String parentNavigablePath;
+  final List<String> fullRequiredParams;
+  final List<String> fullOptionalParams;
+
+  ResolvedRouteInfo({
+    required this.info,
+    required this.navigableFullPath,
+    required this.parentNavigablePath,
+    required this.fullRequiredParams,
+    required this.fullOptionalParams,
+  });
+}
+
+class ResolvedShellInfo {
+  final ShellInfo info;
+  ResolvedShellInfo({required this.info});
+}
+
 class RouteBaseInfo {
   final String className;
   final String? initialLocation;
@@ -664,11 +741,11 @@ class RouteInfo {
   final String? description;
   final List<String> middleware;
   final List<ParameterElement> constructorParams;
-  final List<String> requiredParams;
-  final List<String> optionalParams;
   final String? importPath;
   final String? parent;
   final int? order;
+  final List<String> requiredParams;
+  final List<String> optionalParams;
 
   const RouteInfo({
     required this.className,
@@ -677,11 +754,11 @@ class RouteInfo {
     this.description,
     required this.middleware,
     required this.constructorParams,
-    required this.requiredParams,
-    required this.optionalParams,
     this.importPath,
     this.parent,
     this.order,
+    required this.requiredParams,
+    required this.optionalParams,
   });
 }
 
@@ -696,6 +773,7 @@ class ShellInfo {
   final bool isStateful;
   final String? initialRoute;
   final int? order;
+  final String? pageBuilder;
 
   const ShellInfo({
     required this.className,
@@ -708,5 +786,6 @@ class ShellInfo {
     required this.isStateful,
     this.initialRoute,
     this.order,
+    this.pageBuilder,
   });
 }
