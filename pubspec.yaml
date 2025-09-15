@@ -23,7 +23,7 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^6.0.0
   mockito: ^5.4.0
-  build_runner: ^2.4.15
+  build_runner: ">=2.0.0 <5.0.0"
   auto_go_route_generator:
     path: generator/
 
