@@ -1,3 +1,7 @@
+## 1.0.9
+
+- Add support for analyzer 7.0.0.
+
 ## 1.0.8
 
 - Add support for pageBuilder.

@@ -2,7 +2,7 @@
 
 import 'dart:async';
 
-import 'package:analyzer/dart/element/element.dart';
+import 'package:analyzer/dart/element/element2.dart';
 import 'package:build/build.dart';
 import 'package:code_builder/code_builder.dart';
 import 'package:dart_style/dart_style.dart';
@@ -32,7 +32,7 @@ class AutoGoRouteGenerator extends Generator {
 
     final annotatedElement = annotatedElements.first;
     final element = annotatedElement.element;
-    if (element is! ClassElement) {
+    if (element is! ClassElement2) {
       throw InvalidGenerationSourceError(
         '@AutoGoRouteBase can only be applied to classes',
         element: element,
@@ -63,13 +63,13 @@ class AutoGoRouteGenerator extends Generator {
           .format(generatedCode);
     } catch (e, st) {
       throw InvalidGenerationSourceError(
-        'Failed to generate routes for ${element.name}: $e\n$st',
+        'Failed to generate routes for ${element.displayName}: $e\n$st',
         element: element,
       );
     }
   }
 
-  void _validateRouteNames(List<ResolvedRouteInfo> routes, Element element) {
+  void _validateRouteNames(List<ResolvedRouteInfo> routes, Element2 element) {
     final seen = <String>{};
     for (final route in routes) {
       final name = route.info.name ?? _toLowerCamelCase(route.info.className);
@@ -120,7 +120,7 @@ class AutoGoRouteGenerator extends Generator {
   Future<List<T>> _findAllAnnotatedElements<T>(
     BuildStep buildStep,
     TypeChecker checker,
-    T Function(ClassElement, ConstantReader) extractor,
+    T Function(ClassElement2, ConstantReader) extractor,
   ) async {
     final results = <T>[];
     await for (final input in buildStep.findAssets(Glob('lib/**/*.dart'))) {
@@ -130,7 +130,7 @@ class AutoGoRouteGenerator extends Generator {
         final reader = LibraryReader(lib);
         for (final annotatedElement in reader.annotatedWith(checker)) {
           final element = annotatedElement.element;
-          if (element is ClassElement) {
+          if (element is ClassElement2) {
             results.add(extractor(element, annotatedElement.annotation));
           }
         }
@@ -156,9 +156,9 @@ class AutoGoRouteGenerator extends Generator {
       );
 
   RouteBaseInfo _extractBaseInfo(
-      ClassElement element, ConstantReader annotation) {
+      ClassElement2 element, ConstantReader annotation) {
     return RouteBaseInfo(
-      className: element.name,
+      className: element.displayName,
       initialLocation:
           annotation.read('initialLocation').literalValue as String?,
       errorBuilder: annotation.read('errorBuilder').literalValue as String?,
@@ -168,22 +168,23 @@ class AutoGoRouteGenerator extends Generator {
     );
   }
 
-  RouteInfo _extractRouteInfo(ClassElement element, ConstantReader annotation) {
+  RouteInfo _extractRouteInfo(
+      ClassElement2 element, ConstantReader annotation) {
     final path = annotation.read('path').stringValue;
     final name = annotation.read('name').isNull
-        ? _toLowerCamelCase(element.name)
+        ? _toLowerCamelCase(element.displayName)
         : annotation.read('name').stringValue;
 
     final parent = annotation.read('parent').isNull
         ? null
-        : annotation.read('parent').typeValue.element?.name;
+        : annotation.read('parent').typeValue.element3?.displayName;
 
-    final constructor = element.unnamedConstructor;
-    final params = constructor?.parameters ?? [];
+    final constructor = element.unnamedConstructor2;
+    final params = constructor?.formalParameters ?? [];
 
     final pathParams = GeneratorUtils.extractParametersFromPath(path);
 
-    final constructorParamNames = params.map((p) => p.name).toSet();
+    final constructorParamNames = params.map((p) => p.displayName).toSet();
     final pathParamNames =
         {...pathParams.required, ...pathParams.optional}.toSet();
     final missingPathParams = pathParamNames.difference(constructorParamNames);
@@ -196,7 +197,7 @@ class AutoGoRouteGenerator extends Generator {
     }
 
     return RouteInfo(
-      className: element.name,
+      className: element.displayName,
       path: path,
       name: name,
       description: annotation.read('description').literalValue as String?,
@@ -216,9 +217,10 @@ class AutoGoRouteGenerator extends Generator {
     );
   }
 
-  ShellInfo _extractShellInfo(ClassElement element, ConstantReader annotation) {
+  ShellInfo _extractShellInfo(
+      ClassElement2 element, ConstantReader annotation) {
     return ShellInfo(
-      className: element.name,
+      className: element.displayName,
       path: annotation.read('path').stringValue,
       name: annotation.read('name').isNull
           ? null
@@ -232,7 +234,7 @@ class AutoGoRouteGenerator extends Generator {
       importPath: _getImportPath(element),
       parent: annotation.read('parent').isNull
           ? null
-          : annotation.read('parent').typeValue.element?.name,
+          : annotation.read('parent').typeValue.element3?.displayName,
       isStateful: annotation.read('isStateful').boolValue,
       initialRoute: annotation.read('initialRoute').isNull
           ? null
@@ -246,8 +248,8 @@ class AutoGoRouteGenerator extends Generator {
     );
   }
 
-  String? _getImportPath(ClassElement element) =>
-      element.library.source.uri.toString();
+  String? _getImportPath(ClassElement2 element) =>
+      element.library2.uri.toString();
 
   String _toLowerCamelCase(String input) =>
       input.isEmpty ? '' : input[0].toLowerCase() + input.substring(1);
@@ -466,18 +468,19 @@ class AutoGoRouteGenerator extends Generator {
     final buffer = StringBuffer('(context, state) => ${r.className}(');
     final simpleTypes = {'String', 'int', 'double', 'bool'};
 
-    final args = r.constructorParams.where((p) => p.name != 'key').map((p) {
-      final typeName = p.type.getDisplayString(withNullability: false);
-      final fullTypeName = p.type.getDisplayString(withNullability: true);
+    final args =
+        r.constructorParams.where((p) => p.displayName != 'key').map((p) {
+      final typeName = p.type.getDisplayString();
+      final fullTypeName = p.type.getDisplayString();
       final String access;
 
       if (simpleTypes.any((t) => typeName.startsWith(t))) {
-        access = "state.getParam<$typeName>('${p.name}')";
+        access = "state.getParam<$typeName>('${p.displayName}')";
       } else {
         access = "state.extra as $fullTypeName";
       }
 
-      return p.isNamed ? '${p.name}: $access' : access;
+      return p.isNamed ? '${p.displayName}: $access' : access;
     }).join(', ');
 
     buffer.write(args);
@@ -740,7 +743,7 @@ class RouteInfo {
   final String? name;
   final String? description;
   final List<String> middleware;
-  final List<ParameterElement> constructorParams;
+  final List<FormalParameterElement> constructorParams;
   final String? importPath;
   final String? parent;
   final int? order;
