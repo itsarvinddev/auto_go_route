@@ -1,5 +1,5 @@
 name: auto_go_route
-version: 1.0.9
+version: 1.1.0
 description: A powerful, type-safe, and feature-rich routing package for Flutter GoRouter with automatic code generation.
 
 homepage: https://github.com/itsarvinddev/auto_go_route
@@ -15,14 +15,12 @@ dependencies:
   flutter:
     sdk: flutter
   equatable: ^2.0.7
-  go_router: ^16.1.0
-  meta: ^1.16.0
+  go_router: ^16.2.4
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
-  mockito: ^5.4.0
   build_runner: ">=2.0.0 <5.0.0"
   auto_go_route_generator:
     path: generator/

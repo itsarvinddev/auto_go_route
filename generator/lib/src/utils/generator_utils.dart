@@ -57,8 +57,8 @@ class GeneratorUtils {
   }
 
   /// Get Dart type from parameter element
-  static String getDartType(ParameterElement parameter) {
-    final type = parameter.type.toString();
+  static String getDartType(TypeParameterElement parameter) {
+    final type = parameter.toString();
 
     if (type.contains('<') && type.contains('>')) {
       return type.replaceAll(RegExp(r'<[^>]*>'), '');
@@ -68,8 +68,8 @@ class GeneratorUtils {
   }
 
   /// Check if parameter is nullable
-  static bool isNullable(ParameterElement parameter) {
-    return parameter.type.toString().endsWith('?');
+  static bool isNullable(TypeParameterElement parameter) {
+    return parameter.toString().endsWith('?');
   }
 
   /// Generate method name from path

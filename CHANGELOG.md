@@ -1,3 +1,7 @@
+## 1.1.0
+
+- Dependency updates.
+
 ## 1.0.9
 
 - Add support for analyzer 7.0.0.
