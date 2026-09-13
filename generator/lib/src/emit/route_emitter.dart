@@ -469,7 +469,18 @@ class RouteEmitter {
       final explicit = info.initialRoute;
       if (explicit != null) return explicit;
       for (final childId in graph.childrenOf[id] ?? const <String>[]) {
-        final landing = _landingLocation(childId);
+        // A stateful shell's branch starts where `_emitBranch` says it does,
+        // so an explicit `@AutoGoRouteBranch(initialLocation:)` wins — without
+        // it, a first branch whose route takes path parameters was skipped.
+        final child = nodes[childId];
+        final branch = !info.isStateful
+            ? null
+            : child is RouteInfo
+            ? child.branch
+            : child is ShellInfo
+            ? child.branch
+            : null;
+        final landing = branch?.initialLocation ?? _landingLocation(childId);
         if (landing != null) return landing;
       }
       return null;

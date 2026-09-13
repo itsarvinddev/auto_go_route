@@ -111,7 +111,7 @@ navigation arguments.
 - **`buildRouter({...})` takes every `GoRouter` option**, defaulting to the
   annotation, and the route tree is public as `routes`. The package's own
   example no longer needs to hand-roll a `GoRouter`.
-- **`AutoRouteTransition`** with nine presets and a public
+- **`AutoRouteTransition`** with ten presets and a public
   `buildAutoRoutePage()` so custom page builders can reuse them.
 - **Generated conveniences**: `locationOf…` (build a URL without navigating),
   `replaceInPlaceWith…` (go_router's `replace`), `fragment:` on every helper,
@@ -140,7 +140,7 @@ navigation arguments.
   `canPopSafely`, `goWithParams`, `goToNamed`, `popUntilRoute`,
   `GoRouter.location`, `safeLocation`, `safeCurrentRouteName`) is back as a
   deprecated shim over its replacement.
-- **328 tests** across the runtime (198), the generator (98) and the example
+- **329 tests** across the runtime (198), the generator (99) and the example
   app (32), and a CI workflow covering the Flutter floor, both ends of the
   generator's dependency range, four platform builds, codegen drift and
   `pub publish --dry-run`.

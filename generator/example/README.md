@@ -17,7 +17,7 @@ dependencies:
 
 dev_dependencies:
   auto_go_route_generator: ^2.0.0
-  build_runner: ^2.16.1
+  build_runner: ^2.15.1
 ```
 
 ```dart

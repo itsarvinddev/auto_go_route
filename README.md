@@ -115,7 +115,7 @@ dependencies:
 
 dev_dependencies:
   auto_go_route_generator: ^2.0.0
-  build_runner: ^2.16.1
+  build_runner: ^2.15.1
 ```
 
 ```bash
@@ -124,6 +124,13 @@ flutter pub get
 
 `auto_go_route` re-exports `go_router`. You do not need a separate `go_router`
 dependency or import for `GoRouter`, `GoRouterState` or `context.go`.
+
+> [!WARNING]
+> Keep `auto_go_route` and `auto_go_route_generator` on the **same major
+> version**. A 1.x generator still builds against the 2.x runtime, but it
+> ignores 2.x annotation fields such as `redirect:` and `metadata:`, so guards
+> silently stop running. `flutter pub deps | grep auto_go_route` should show
+> both at 2.x.
 
 ### 2. Annotate a screen
 
@@ -156,8 +163,7 @@ names. Flutter and `go_router` types are already covered by
 // lib/app_router.dart
 import 'package:auto_go_route/auto_go_route.dart';
 
-import 'pages/home_page.dart';        // every annotated widget
-import 'pages/product_page.dart';
+import 'pages/home_page.dart';        // …and every other annotated widget
 
 part 'app_router.routes.g.dart';      // note the `.routes.g.dart` suffix
 
@@ -319,6 +325,8 @@ To send a malformed link somewhere useful, check it in a route `redirect`,
 where `RouteCodec` reads parameters the same way:
 
 ```dart
+import 'dart:async';
+
 FutureOr<String?> validId(BuildContext context, GoRouterState state) {
   try {
     return RouteCodec.optionalInt(state, 'id') == null ? '/not-found' : null;
@@ -458,11 +466,15 @@ class ComposeShell extends StatelessWidget {
 ## Guards
 
 Annotations refer to functions **by name, as strings**. The functions must be
-top-level or static and visible from the router library.
+top-level or static and visible from the router library. Guards return
+`FutureOr`, which comes from `dart:async` — `auto_go_route` does not re-export
+it, so add `import 'dart:async';` to the library that declares them.
 
 ### Route-level guards
 
 ```dart
+import 'dart:async';
+
 FutureOr<String?> requireAuth(BuildContext context, GoRouterState state) =>
     authService.isLoggedIn ? null : '/login';
 
@@ -588,7 +600,8 @@ extension AutoGoRouteNavigation on BuildContext {
 }
 ```
 
-Every helper also accepts `queries`, `fragment` and `extra`. The route name
+Every helper also accepts `queries` and `fragment`; all but `locationOf…` also
+accept `extra`, which a URL cannot carry. The route name
 defaults to the widget class name in lowerCamelCase; override it with
 `@AutoGoRoute(name: ...)`.
 
@@ -603,7 +616,7 @@ appRouter.buildRouter(/* ... */);
 appRouter.buildRoutingConfig();   // RoutingConfig, for dynamic routing
 appRouter.buildDynamicRouter(routingConfig: /* ... */);
 
-AppRoute.values;                  // an enum of every route, with name + template
+AppRoute.values;                  // an enum of every route, with routeName + template
 DashboardShellBranch.values;      // one enum per stateful shell, in tab order
 ```
 
@@ -677,8 +690,9 @@ one — the build warns until you do:
 class AdminRouter extends _$AdminRouter {}
 ```
 
-A router library outside `lib/`, under `test/` for example, also scans its own
-top-level directory.
+A router library under `test/` also scans `test/`. The builder only runs on
+`lib/` and `test/`, so a router in `integration_test/` or `bin/` is not
+generated.
 
 </details>
 
@@ -746,7 +760,7 @@ First read https://raw.githubusercontent.com/itsarvinddev/auto_go_route/main/llm
 and follow its rules exactly.
 
 1. Add auto_go_route ^2.0.0 to dependencies, and auto_go_route_generator ^2.0.0
-   and build_runner ^2.16.1 to dev_dependencies. Do not add go_router separately.
+   and build_runner ^2.15.1 to dev_dependencies. Do not add go_router separately.
 2. Annotate each screen widget with @AutoGoRoute. Turn the data each screen needs
    into typed constructor parameters: IDs in the path, filters and options as
    query parameters, and at most one nullable object per route in extra.
@@ -769,8 +783,11 @@ Screens: <list your screens, their paths and the data each one needs>
 <summary><b>2. Convert an existing go_router configuration</b></summary>
 
 ```text
-Migrate this app's hand-written go_router configuration to auto_go_route 2.x
-without changing any URL or behaviour.
+Migrate this app's hand-written go_router configuration to auto_go_route 2.x,
+keeping every URL and behaviour the same. If a route cannot be expressed with
+auto_go_route annotations (for example one widget built by two GoRoutes, or a
+StatefulShellBranch with several root routes), stop and list it instead of
+changing its URL.
 
 Read https://raw.githubusercontent.com/itsarvinddev/auto_go_route/main/llms.txt
 first and follow its rules.
@@ -807,7 +824,7 @@ and the assistant brief:
 https://raw.githubusercontent.com/itsarvinddev/auto_go_route/main/llms.txt
 
 1. Bump auto_go_route and auto_go_route_generator to ^2.0.0 and build_runner to
-   ^2.16.1, as described in section 1. Remove any direct go_router dependency
+   ^2.15.1, as described in section 1. Remove any direct go_router dependency
    unless other code needs it.
 2. Run `dart run build_runner build` and fix every build error by following the
    fix included in its message.
@@ -852,7 +869,7 @@ Add authentication guards with auto_go_route, following llms.txt
 - Mark protected routes with `metadata: {'requiresAuth': true}` on their
   @AutoGoRoute annotations: <list the routes>.
 - Write one top-level `FutureOr<String?> appRedirect(BuildContext context,
-  GoRouterState state)` in the router library. It reads
+  GoRouterState state)` in the router library (import dart:async for FutureOr). It reads
   state.metadataAs<bool>('requiresAuth') and redirects signed-out users to
   /login?from=<the original location, URI-encoded>.
 - Register it with @AutoGoRouteBase(redirect: 'appRedirect').

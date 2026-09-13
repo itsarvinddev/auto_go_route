@@ -20,11 +20,17 @@ dependencies:
   auto_go_route: ^2.0.0      # re-exports go_router — do NOT add go_router separately
 dev_dependencies:
   auto_go_route_generator: ^2.0.0
-  build_runner: ^2.16.1
+  build_runner: ^2.15.1
 ```
 
-Generate with `dart run build_runner build` (or `watch`). The flag
-`--delete-conflicting-outputs` is obsolete in build_runner 2.16+; do not add it.
+Keep auto_go_route and auto_go_route_generator on the SAME major version: a 1.x
+generator builds against the 2.x runtime but silently ignores `redirect:`,
+`metadata:`, `transition:`, `onExit:` and typed parameters.
+
+Generate with `dart run build_runner build` (or `watch`). build_runner 2.15.1
+is the floor because it is the newest release that supports Dart 3.10; on Dart
+3.11+ pub selects 2.16+, where `--delete-conflicting-outputs` is obsolete. Do
+not add that flag unless an older build_runner reports conflicting outputs.
 
 ## Rules an assistant must follow
 
@@ -35,7 +41,8 @@ Generate with `dart run build_runner build` (or `watch`). The flag
 3. The router library must import every annotated widget, every type used by
    their constructor parameters, and every function/key named in an annotation
    string. `package:auto_go_route/auto_go_route.dart` covers Flutter/go_router
-   types used by generated code.
+   types used by generated code, but not `FutureOr`: a library declaring guards
+   needs `import 'dart:async';`.
 4. Annotation references are STRINGS naming top-level/static identifiers:
    `middleware: ['requireAuth']`, `errorWidget: 'ErrorScreen.new'`,
    `parentNavigatorKey: 'rootNavigatorKey'`.
@@ -76,7 +83,7 @@ void main() => runApp(MaterialApp.router(routerConfig: router));
 ## Parameter classification (per constructor parameter, in order)
 
 1. `key` and a shell's child slot are skipped.
-2. Explicit markers win: `@PathParam(['wireName'])`, `@QueryParam(['wireName'])`,
+2. Explicit markers win: `@PathParam()` / `@PathParam('wireName')`, `@QueryParam()` / `@QueryParam('wireName')`,
    `@RouteExtra()`, `@RouteIgnore()` (on the field or the parameter).
 3. Name appears in the resolved path → path parameter.
 4. Type is URL-representable → query parameter.
@@ -101,7 +108,8 @@ context.pushToProductPage<bool>(id: 42);                     // push, Future<boo
 context.replaceWithProductPage(id: 42);                      // pushReplacement
 context.replaceInPlaceWithProductPage(id: 42);               // replace
 context.locationOfProductPage(id: 42);                       // '/products/42' (no navigation)
-// every helper also takes: Map<String, dynamic>? queries, String? fragment, extra
+// every helper also takes: Map<String, dynamic>? queries, String? fragment
+// and all but locationOf… take: extra
 
 ProductPageRoute.routeName;       // 'productPage'
 ProductPageRoute.routeTemplate;   // '/products/:id'
@@ -111,7 +119,7 @@ appRouter.routes;                 // List<RouteBase>
 appRouter.buildRouter({...every GoRouter option, defaulting to the annotation});
 appRouter.buildRoutingConfig();   // RoutingConfig for dynamic routing
 appRouter.buildDynamicRouter(routingConfig: valueNotifier);
-AppRoute.values;                  // enum of all routes (name + template)
+AppRoute.values;                  // enum of all routes (.routeName + .template)
 DashboardShellBranch.values;      // enum per stateful shell, in tab order
 ```
 
@@ -175,11 +183,14 @@ Shell facts:
 - Stateful shells: put `navigatorKey`/`observers`/`preload`/`initialLocation` on
   `@AutoGoRouteBranch` on the child; a branch whose first route has path
   parameters needs `@AutoGoRouteBranch(initialLocation: '...')`.
-- Switch tabs from inside a branch: `DashboardShellBranch.settings.goFrom(context)`.
+- Switch tabs from inside a branch: `DashboardShellBranch.feedPage.goFrom(context)`
+  (enum values are named after each branch's route name).
 
 ## Guards and redirects
 
 ```dart
+import 'dart:async'; // FutureOr
+
 // Route-level guard (in the router library)
 FutureOr<String?> requireAuth(BuildContext context, GoRouterState state) =>
     authService.isLoggedIn ? null : '/login';

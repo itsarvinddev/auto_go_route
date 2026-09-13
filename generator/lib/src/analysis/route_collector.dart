@@ -187,8 +187,9 @@ class RouteCollector {
         'one of them.',
         element: element,
         todo:
-            'Keep the one you want and drop the others, or pass the others to '
-            '`buildRouter()` at runtime.',
+            'Keep the one you want and drop the others. To choose at runtime, '
+            'leave all of them off the annotation and pass one to '
+            '`buildRouter()`.',
       );
     }
 

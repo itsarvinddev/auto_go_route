@@ -384,6 +384,36 @@ class AppRouter extends _\$AppRouter {}
       expect(output, containsCode("state.uri.path == '/' ? '/feed' : null"));
     });
 
+    test('"/" lands on the first branch\'s explicit initialLocation', () async {
+      final output = await generate('''
+$_header
+
+@AutoGoRouteShell(path: '/', isStateful: true)
+class Tabs {
+  const Tabs({required this.navigationShell});
+  final StatefulNavigationShell navigationShell;
+}
+
+@AutoGoRoute(path: '/users/:id', parent: Tabs, order: 0)
+@AutoGoRouteBranch(initialLocation: '/users/1')
+class UserPage {
+  const UserPage({required this.id});
+  final int id;
+}
+
+@AutoGoRoute(path: '/inbox', parent: Tabs, order: 1)
+class InboxPage {
+  const InboxPage();
+}
+
+@AutoGoRouteBase()
+class AppRouter extends _\$AppRouter {}
+''');
+      // Previously the parameterised first branch was skipped and "/" went to
+      // the second branch.
+      expect(output, containsCode("state.uri.path == '/' ? '/users/1' : null"));
+    });
+
     test('branch order follows `order`, not discovery order', () async {
       final output = await generate('''
 $_header

@@ -1,5 +1,5 @@
 name: example
-description: "A new Flutter project."
+description: "Example app for auto_go_route: typed, generated go_router routes."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: "none" # Remove this line if you wish to publish to pub.dev
@@ -48,7 +48,7 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
-  build_runner: ^2.16.1
+  build_runner: ^2.15.1
   auto_go_route_generator:
     path: ../generator
 

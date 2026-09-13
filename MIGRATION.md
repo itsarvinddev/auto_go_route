@@ -30,12 +30,20 @@ dependencies:
   auto_go_route: ^2.0.0
 dev_dependencies:
   auto_go_route_generator: ^2.0.0
-  build_runner: ^2.16.1
+  build_runner: ^2.15.1
 ```
 
+**Upgrade both packages together.** A 1.x `auto_go_route_generator` still
+builds against `auto_go_route` 2.x without an error, but it ignores every
+field 2.0 added — `redirect:`, `metadata:`, `transition:`, `onExit:`, typed
+parameters — so guards silently stop running. After upgrading, check that
+`flutter pub deps | grep auto_go_route` lists both at 2.x.
+
 **Drop your direct `go_router` dependency and its imports.**
-`auto_go_route` now re-exports `go_router`, so one import covers both. Keeping
-the dependency is harmless; keeping a redundant import only adds noise.
+`auto_go_route` now re-exports `go_router`, so one import covers both. If you
+keep the dependency, raise it to `>=17.5.0 <19.0.0` — `go_router: ^16.0.0`
+conflicts with `auto_go_route` 2.x (`flutter pub upgrade --major-versions`
+does this for you). Keeping a redundant import only adds noise.
 
 Requires Flutter `>=3.38.1` / Dart `>=3.10.0`, which is what `go_router`
 `17.5.0` needs — the lowest version exposing route `metadata`. (Flutter 3.38.0
@@ -268,8 +276,9 @@ rather than an assertion at app startup.
 
 `props` no longer contains `builder`. Two instances of the same generated route
 are now equal and hash stably — in 1.x they never were, because `builder` is a
-fresh closure per construction. Routes differing only by `middleware` now
-compare *unequal*; use `identical` if you relied on reference semantics.
+fresh closure per construction. Equality compares `path`, `template`, `name`,
+`description`, `caseSensitive` and `metadata` — not guards — so use `identical`
+if you relied on reference semantics.
 
 `ShellRoutePaths` now separates stateless from stateful builders
 (`builder`/`pageBuilder` versus `statefulBuilder`/`statefulPageBuilder`), so
@@ -416,7 +425,7 @@ Worth adopting once you are building:
   **`restorationScopeId:`**, **`notifyRootObserver:`**, **`extraCodec:`**.
 - **`@AutoGoRouteBranch`** for `preload`, `initialLocation`, `navigatorKey`,
   `observers` and `restorationScopeId` on a stateful shell's branches.
-- **`transition:`** with nine presets, plus `transitionDurationMs`,
+- **`transition:`** with ten presets, plus `transitionDurationMs`,
   `fullscreenDialog`, `opaque`, `barrierDismissible`, `restorationId`.
 - **`@PathParam` / `@QueryParam` / `@RouteExtra` / `@RouteIgnore`** to override
   classification or rename a wire parameter.

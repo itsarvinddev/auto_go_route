@@ -3,8 +3,9 @@
 The `build_runner` code generator for
 [`auto_go_route`](https://pub.dev/packages/auto_go_route).
 
-You do not use this package directly — add it as a `dev_dependency` and it
-applies itself to any package depending on `auto_go_route`.
+You do not use this package directly — add it as a `dev_dependency` next to
+`auto_go_route` and `build_runner` applies it to your package automatically.
+Keep both packages on the same major version.
 
 ```yaml
 dependencies:
@@ -12,7 +13,7 @@ dependencies:
 
 dev_dependencies:
   auto_go_route_generator: ^2.0.0
-  build_runner: ^2.16.1
+  build_runner: ^2.15.1
 ```
 
 ```bash

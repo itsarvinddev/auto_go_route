@@ -30,6 +30,9 @@ Matches `auto_go_route` 2.0.0. See the
   would otherwise swallow them, are skipped over a real route at the same path,
   default to the shell's first child, and the root-shell redirect no longer
   shadows a route declared at `/`.
+- A root stateful shell's `/` redirect honours the first branch's
+  `@AutoGoRouteBranch(initialLocation:)`; a first branch whose route takes path
+  parameters used to be skipped, landing `/` on the second tab.
 - A router library outside `lib/` also scans its own top-level directory.
 - The `source_gen` floor is 4.1.1, the first release with
   `TypeChecker.typeNamedLiterally`; 4.0.1 could not compile the generator.
@@ -62,7 +65,7 @@ Matches `auto_go_route` 2.0.0. See the
   and a branch enum per stateful shell.
 - `List<bool>`, `List<num>`, `List<BigInt>`, `List<DateTime>` and `List<Uri>`
   query parameters.
-- 98 tests covering emitted output, every build error, determinism, and a check
+- 99 tests covering emitted output, every build error, determinism, and a check
   that the resolved analyzer keeps up with the SDK's language version.
 
 ### Changed

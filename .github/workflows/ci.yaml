@@ -46,6 +46,13 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
+      # The documented install (`build_runner: ^2.15.1`) has to resolve and
+      # generate on the floor too — build_runner 2.16 needs Dart 3.11. No drift
+      # check: the formatter behind the generated file differs between SDKs.
+      - run: dart run build_runner build
+        working-directory: example
+      - run: flutter test
+        working-directory: example
 
   runtime-lower-bounds:
     name: runtime (lowest resolvable dependencies)
