@@ -95,7 +95,7 @@ it. It removes the boilerplate around it and makes the URL layer type-safe.
 
 | `auto_go_route` | `go_router` | Flutter | Dart |
 |---|---|---|---|
-| **2.0.x** | `>=17.5.0 <19.0.0` | `>=3.38.0` | `>=3.10.0` |
+| **2.0.x** | `>=17.5.0 <19.0.0` | `>=3.38.1` | `>=3.10.0` |
 | 1.1.x | `^16.2.4` | `>=3.29.0` | `>=3.7.0` |
 
 > [!IMPORTANT]

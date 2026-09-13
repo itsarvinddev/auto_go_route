@@ -1,9 +1,13 @@
 include: package:flutter_lints/flutter.yaml
 
 analyzer:
+  # Both nested packages have their own analysis_options.yaml and dependencies.
+  # Without their own `pub get`, analyzing from the root would resolve them
+  # against this package and report every generator import as missing.
   exclude:
     - build/**
     - example/**
+    - generator/**
   language:
     strict-casts: true
     strict-inference: true

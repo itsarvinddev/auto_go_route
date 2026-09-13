@@ -37,8 +37,9 @@ dev_dependencies:
 `auto_go_route` now re-exports `go_router`, so one import covers both. Keeping
 the dependency is harmless; keeping a redundant import only adds noise.
 
-Requires Flutter `>=3.38.0` / Dart `>=3.10.0`, which is what `go_router`
-`17.5.0` needs — the lowest version exposing route `metadata`. On Flutter
+Requires Flutter `>=3.38.1` / Dart `>=3.10.0`, which is what `go_router`
+`17.5.0` needs — the lowest version exposing route `metadata`. (Flutter 3.38.0
+bundles a pre-release Dart 3.10 that neither package accepts.) On Flutter
 `>=3.44` pub selects `go_router` 18.x automatically.
 
 **This is also the fix for the hanging build**

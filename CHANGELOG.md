@@ -156,7 +156,8 @@ navigation arguments.
 
 ### Changed
 
-- Requires `go_router >=17.5.0 <19.0.0`, Flutter `>=3.38.0`, Dart `>=3.10.0`.
+- Requires `go_router >=17.5.0 <19.0.0`, Flutter `>=3.38.1`, Dart `>=3.10.0`.
+  (Flutter 3.38.0 itself bundles a pre-release Dart that `>=3.10.0` excludes.)
   The old floor (`go_router: ^16.2.4` with `flutter: ">=3.0.0"`) was never
   satisfiable.
 - The annotation scan skips libraries whose source does not mention

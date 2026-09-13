@@ -33,13 +33,15 @@ jobs:
     # The lowest Flutter pubspec.yaml admits. Pub resolves go_router 17.5.0
     # here, so this is also what proves the go_router floor compiles. No format
     # check: formatter output legitimately differs between Dart versions.
-    name: runtime (Flutter 3.38.0 floor)
+    # 3.38.0 cannot be the floor: it bundles Dart 3.10.0-290.4.beta, which
+    # `sdk: >=3.10.0` excludes.
+    name: runtime (Flutter 3.38.1 floor)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: 3.38.0
+          flutter-version: 3.38.1
           cache: true
       - run: flutter pub get
       - run: flutter analyze
