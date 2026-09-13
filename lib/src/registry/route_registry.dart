@@ -1,275 +1,410 @@
 import 'dart:convert';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 
+import '../base/route_guard.dart';
 import '../base/route_paths.dart';
+import '../utils/route_utils.dart';
 
-/// Central registry for all application routes
+/// The format [RouteRegistry.generateDocumentation] emits.
+enum DocumentationFormat {
+  /// GitHub-flavoured Markdown.
+  markdown,
+
+  /// A JSON object, for feeding other tooling.
+  json,
+
+  /// A standalone HTML page.
+  html,
+}
+
+/// An index of route definitions, for validation, documentation and
+/// diagnostics.
+///
+/// The generated router does not need a registry to work — it builds its
+/// `GoRoute` tree directly. Use one when you want to introspect your routes:
+/// dump a route table into your docs, assert in a test that every route has a
+/// description, or render a debug screen listing every location in the app.
+///
+/// ```dart
+/// final registry = RouteRegistry.scoped()..registerAll(router.allRoutes);
+/// registry.validateAllRoutes();
+/// print(registry.generateDocumentation());
+/// ```
+///
+/// [RouteRegistry.new] returns a process-wide singleton for compatibility with
+/// 1.x. Prefer [RouteRegistry.scoped] — a global registry makes tests order
+/// dependent, since one test's routes leak into the next.
 class RouteRegistry {
-  static final RouteRegistry _instance = RouteRegistry._internal();
-  factory RouteRegistry() => _instance;
-  RouteRegistry._internal();
+  /// Returns the process-wide singleton.
+  ///
+  /// Prefer [RouteRegistry.scoped].
+  factory RouteRegistry() => instance;
+
+  /// Creates an independent registry.
+  RouteRegistry.scoped();
+
+  /// The process-wide singleton returned by [RouteRegistry.new].
+  static final RouteRegistry instance = RouteRegistry.scoped();
 
   final Map<String, RoutePaths> _routes = {};
   final Map<String, List<RoutePaths>> _routeGroups = {};
   final Map<String, RouteMetadata> _metadata = {};
 
-  /// Register a single route
-  void register(RoutePaths route) {
-    final key = route.name ?? route.path;
+  /// Registers [route] under its name, falling back to its path template.
+  ///
+  /// Throws a [StateError] on a duplicate key unless [replace] is set. 1.x
+  /// overwrote silently, which hid the duplicate-name bugs the generator now
+  /// catches at build time.
+  void register(RoutePaths route, {bool replace = false}) {
+    final key = route.name ?? route.template;
+    if (!replace && _routes.containsKey(key)) {
+      final existing = _routes[key]!;
+      if (existing == route) return;
+      throw StateError(
+        'A different route is already registered as "$key": '
+        '${existing.template} vs ${route.template}. Give one of them a '
+        'distinct name, or pass replace: true.',
+      );
+    }
     _routes[key] = route;
     _metadata[key] = RouteMetadata.fromRoute(route);
   }
 
-  /// Register multiple routes
-  void registerAll(List<RoutePaths> routes) {
+  /// Registers every route in [routes].
+  void registerAll(Iterable<RoutePaths> routes, {bool replace = false}) {
     for (final route in routes) {
-      register(route);
+      register(route, replace: replace);
     }
   }
 
-  /// Register routes in a group
-  void registerGroup(String groupName, List<RoutePaths> routes) {
-    _routeGroups[groupName] = routes;
-    registerAll(routes);
-  }
-
-  /// Get route by name or path
-  RoutePaths? getRoute(String identifier) {
-    return _routes[identifier];
-  }
-
-  /// Get routes by group
-  List<RoutePaths>? getRouteGroup(String groupName) {
-    return _routeGroups[groupName];
-  }
-
-  /// Get all registered routes
-  List<RoutePaths> get allRoutes => _routes.values.toList();
-
-  /// Get all route names
-  List<String> get allRouteNames => _routes.keys.toList();
-
-  /// Generate GoRouter routes
-  List<GoRoute> generateGoRoutes({
-    String? Function(BuildContext, GoRouterState)? globalRedirect,
+  /// Registers [routes] and records them under [groupName].
+  void registerGroup(
+    String groupName,
+    List<RoutePaths> routes, {
+    bool replace = false,
   }) {
-    return _routes.values.map((route) {
-      final goRoute = route.toGoRoute();
-      // If a global redirect is provided, it overrides the route-specific one.
-      return goRoute.copyWith(redirect: globalRedirect);
-    }).toList();
+    _routeGroups[groupName] = List.unmodifiable(routes);
+    registerAll(routes, replace: replace);
   }
 
-  /// Validate all registered routes
+  /// The route registered as [identifier] — its name, or its path template.
+  RoutePaths? getRoute(String identifier) => _routes[identifier];
+
+  /// The routes registered under [groupName].
+  List<RoutePaths>? getRouteGroup(String groupName) => _routeGroups[groupName];
+
+  /// Every registered route.
+  List<RoutePaths> get allRoutes => List.unmodifiable(_routes.values);
+
+  /// Every registered key.
+  List<String> get allRouteNames => List.unmodifiable(_routes.keys);
+
+  /// Recorded metadata for every registered route.
+  Map<String, RouteMetadata> get metadata => Map.unmodifiable(_metadata);
+
+  /// The registered route whose template is closest to [location].
+  ///
+  /// Powers "did you mean…?" messages for an unmatched URL. Returns `null`
+  /// when nothing scores above [threshold].
+  RoutePaths? findClosest(String location, {double threshold = 0.3}) {
+    RoutePaths? best;
+    var bestScore = threshold;
+    for (final route in _routes.values) {
+      final score = RouteUtils.calculateRouteSimilarity(
+        route.template,
+        location,
+      );
+      if (score > bestScore) {
+        bestScore = score;
+        best = route;
+      }
+    }
+    return best;
+  }
+
+  /// Builds a flat list of `GoRoute`s from the registered routes.
+  ///
+  /// This is a *flat* projection: each route is mounted at its own absolute
+  /// [RoutePaths.template] with no nesting, which is useful for a quick
+  /// router in a test but is not how the generated router builds its tree —
+  /// use the generated `routes` getter for that, which preserves shells and
+  /// parent/child structure.
+  ///
+  /// [globalRedirect] is composed *ahead of* each route's own guards rather
+  /// than replacing them. In 1.x it overwrote `GoRoute.redirect`, silently
+  /// deleting every route's auth guard.
+  List<GoRoute> generateGoRoutes({RouteGuard? globalRedirect}) {
+    return [
+      for (final route in _routes.values)
+        GoRoute(
+          path: route.template,
+          name: route.name,
+          builder: route.builder,
+          pageBuilder: route.pageBuilder,
+          onExit: route.onExit,
+          parentNavigatorKey: route.parentNavigatorKey,
+          caseSensitive: route.caseSensitive,
+          metadata: route.metadata,
+          redirect: _compose(globalRedirect, route.composedRedirect),
+        ),
+    ];
+  }
+
+  static RouteGuard? _compose(RouteGuard? first, RouteGuard? second) {
+    if (first == null) return second;
+    if (second == null) return first;
+    return (context, state) {
+      final outer = first(context, state);
+      if (outer is Future<String?>) {
+        return outer.then(
+          // go_router keeps this context alive across the redirect chain.
+          // ignore: use_build_context_synchronously
+          (value) => value ?? second(context, state),
+        );
+      }
+      return outer ?? second(context, state);
+    };
+  }
+
+  /// Validates every registered route, throwing a [StateError] listing all
+  /// problems found.
+  ///
+  /// See [validate] for a non-throwing version.
   void validateAllRoutes() {
+    final result = validate();
+    if (!result.isValid) {
+      throw StateError('Route validation failed:\n${result.errors.join('\n')}');
+    }
+  }
+
+  /// Validates every registered route.
+  ///
+  /// Checks that templates are absolute and well formed, that no two routes
+  /// share a template, and that no template repeats a parameter name.
+  ///
+  /// 1.x also compared "declared" against "used" parameters and rejected every
+  /// nested route and every route with an optional parameter — including the
+  /// generator's own output.
+  RouteValidationResult validate() {
     final errors = <String>[];
+    final warnings = <String>[];
+    final byTemplate = <String, String>{};
 
     for (final route in _routes.values) {
-      try {
-        _validateRoute(route);
-      } catch (e) {
-        errors.add('Route ${route.path}: $e');
+      final label = route.name ?? route.template;
+      final template = route.template;
+
+      if (!RouteUtils.isValidTemplate(template)) {
+        errors.add(
+          'Route "$label" has an invalid path template "$template". It must '
+          'start with "/" and contain no whitespace, "//", "?" or "#".',
+        );
+        continue;
+      }
+
+      final names = <String>[];
+      for (final match in RegExp(
+        r':(\w+)',
+      ).allMatches(template.replaceAll(RegExp(r'\([^)]*\)'), ''))) {
+        names.add(match.group(1)!);
+      }
+      final duplicates = <String>{};
+      final seen = <String>{};
+      for (final name in names) {
+        if (!seen.add(name)) duplicates.add(name);
+      }
+      if (duplicates.isNotEmpty) {
+        errors.add(
+          'Route "$label" repeats path ${duplicates.length == 1 ? 'parameter' : 'parameters'} '
+          '${duplicates.join(', ')} in "$template".',
+        );
+      }
+
+      final previous = byTemplate[template];
+      if (previous != null) {
+        errors.add(
+          'Routes "$previous" and "$label" both resolve to "$template".',
+        );
+      } else {
+        byTemplate[template] = label;
+      }
+
+      if (route.description == null || route.description!.isEmpty) {
+        warnings.add('Route "$label" has no description.');
       }
     }
 
-    if (errors.isNotEmpty) {
-      throw StateError('Route validation failed:\n${errors.join('\n')}');
-    }
+    return errors.isEmpty
+        ? RouteValidationResult.valid(warnings: warnings)
+        : RouteValidationResult.invalid(errors, warnings);
   }
 
-  void _validateRoute(RoutePaths route) {
-    // Extract parameters from path
-    final pathParams = RegExp(r':(\w+)\??')
-        .allMatches(route.path)
-        .map((m) => m.group(1)!)
-        .toSet();
-
-    final declaredParams = {
-      ...route.requiredParams,
-      ...route.optionalParams,
-    }.toSet();
-
-    // Check for undeclared parameters
-    final undeclaredParams = pathParams.difference(declaredParams);
-    if (undeclaredParams.isNotEmpty) {
-      throw StateError('Undeclared parameters: ${undeclaredParams.join(', ')}');
-    }
-
-    // Check for unused declared parameters
-    final unusedParams = declaredParams.difference(pathParams);
-    if (unusedParams.isNotEmpty) {
-      throw StateError(
-          'Unused declared parameters: ${unusedParams.join(', ')}');
-    }
-
-    // Validate path format
-    if (!route.path.startsWith('/')) {
-      throw StateError('Path must start with /');
-    }
-  }
-
-  /// Generate comprehensive documentation
+  /// Renders documentation for every registered route.
+  ///
+  /// [generatedAt] is stamped into the output; pass a fixed value to make the
+  /// result reproducible, which is what lets a golden test diff it.
   String generateDocumentation({
     bool includeMetadata = true,
     bool includeParameters = true,
     bool includeExamples = true,
     DocumentationFormat format = DocumentationFormat.markdown,
+    DateTime? generatedAt,
   }) {
     switch (format) {
       case DocumentationFormat.markdown:
-        return _generateMarkdownDocs(
-            includeMetadata, includeParameters, includeExamples);
+        return _markdown(
+          includeMetadata,
+          includeParameters,
+          includeExamples,
+          generatedAt,
+        );
       case DocumentationFormat.json:
-        return _generateJsonDocs(includeMetadata, includeParameters);
+        return _json(includeMetadata, includeParameters, generatedAt);
       case DocumentationFormat.html:
-        return _generateHtmlDocs(
-            includeMetadata, includeParameters, includeExamples);
+        return _html(includeMetadata, includeParameters, generatedAt);
     }
   }
 
-  String _generateMarkdownDocs(
-      bool includeMetadata, bool includeParameters, bool includeExamples) {
-    final buffer = StringBuffer();
-    buffer.writeln('# Application Routes Documentation\n');
-    buffer.writeln('Generated on: ${DateTime.now().toIso8601String()}\n');
-    buffer.writeln('Total routes: ${_routes.length}\n');
+  List<RoutePaths> get _sorted =>
+      _routes.values.toList()..sort((a, b) => a.template.compareTo(b.template));
 
-    // Group routes by category
-    final grouped = _groupRoutesByCategory();
+  String _markdown(
+    bool includeMetadata,
+    bool includeParameters,
+    bool includeExamples,
+    DateTime? generatedAt,
+  ) {
+    final buffer = StringBuffer()
+      ..writeln('# Application routes')
+      ..writeln();
+    if (generatedAt != null) {
+      buffer
+        ..writeln('Generated on: ${generatedAt.toIso8601String()}')
+        ..writeln();
+    }
+    buffer
+      ..writeln('Total routes: ${_routes.length}')
+      ..writeln();
+
+    final grouped = <String, List<RoutePaths>>{};
+    for (final route in _sorted) {
+      grouped.putIfAbsent(_category(route.template), () => []).add(route);
+    }
 
     for (final entry in grouped.entries) {
-      buffer.writeln('## ${entry.key}\n');
-
+      buffer
+        ..writeln('## ${entry.key}')
+        ..writeln();
       for (final route in entry.value) {
-        buffer.writeln('### ${route.name ?? _extractNameFromPath(route.path)}');
-        buffer.writeln('- **Path:** `${route.path}`');
-
-        if (route.name != null) {
-          buffer.writeln('- **Name:** `${route.name}`');
-        }
-
+        buffer
+          ..writeln('### ${route.name ?? _label(route.template)}')
+          ..writeln('- **Path:** `${route.template}`');
+        if (route.name != null) buffer.writeln('- **Name:** `${route.name}`');
         if (includeMetadata && route.description != null) {
           buffer.writeln('- **Description:** ${route.description}');
         }
-
-        if (includeParameters) {
-          if (route.requiredParams.isNotEmpty) {
-            buffer.writeln('- **Required Parameters:**');
-            for (final param in route.requiredParams) {
-              buffer.writeln('  - `$param`: String');
-            }
-          }
-
-          if (route.optionalParams.isNotEmpty) {
-            buffer.writeln('- **Optional Parameters:**');
-            for (final param in route.optionalParams) {
-              buffer.writeln('  - `$param`: String (optional)');
-            }
+        if (includeMetadata && route.metadata != null) {
+          buffer.writeln('- **Metadata:** `${route.metadata}`');
+        }
+        if (includeParameters && route.pathParameters.isNotEmpty) {
+          buffer.writeln('- **Path parameters:**');
+          for (final param in route.pathParameters) {
+            buffer.writeln('  - `$param`');
           }
         }
-
         if (includeExamples) {
-          buffer.writeln('- **Example Usage:**');
-          if (route.requiredParams.isEmpty && route.optionalParams.isEmpty) {
-            buffer.writeln('  ```');
-            buffer.writeln('  context.go("${route.path}");');
-            buffer.writeln('  ```');
-          } else {
-            buffer.writeln('  ```');
-            buffer.writeln('  context.goToRoute(route, params: {');
-            for (final param in route.requiredParams) {
-              buffer.writeln('    "$param": "example_value",');
-            }
-            for (final param in route.optionalParams) {
-              buffer.writeln('    "$param": "optional_value", // optional');
-            }
-            buffer.writeln('  });');
-            buffer.writeln('  ```');
-          }
+          buffer
+            ..writeln('- **Example:**')
+            ..writeln('  ```dart')
+            ..writeln(
+              route.pathParameters.isEmpty
+                  ? "  context.go('${route.template}');"
+                  : '  context.goToRoute(route, params: {'
+                        '${route.pathParameters.map((p) => "'$p': '…'").join(', ')}'
+                        '});',
+            )
+            ..writeln('  ```');
         }
-
-        buffer.writeln('');
+        buffer.writeln();
       }
     }
-
     return buffer.toString();
   }
 
-  String _generateJsonDocs(bool includeMetadata, bool includeParameters) {
-    final docs = <String, dynamic>{
-      'generated_at': DateTime.now().toIso8601String(),
-      'total_routes': _routes.length,
-      'routes': {},
-    };
+  String _json(
+    bool includeMetadata,
+    bool includeParameters,
+    DateTime? generatedAt,
+  ) => jsonEncode({
+    if (generatedAt != null) 'generated_at': generatedAt.toIso8601String(),
+    'total_routes': _routes.length,
+    'routes': {
+      for (final route in _sorted)
+        route.name ?? route.template: {
+          'path': route.template,
+          'name': route.name,
+          if (includeMetadata && route.description != null)
+            'description': route.description,
+          if (includeMetadata && route.metadata != null)
+            'metadata': route.metadata,
+          if (includeParameters) 'path_params': route.pathParameters,
+        },
+    },
+  });
 
-    for (final route in _routes.values) {
-      final routeDoc = <String, dynamic>{
-        'path': route.path,
-        'name': route.name,
-      };
-
-      if (includeMetadata && route.description != null) {
-        routeDoc['description'] = route.description;
-      }
-
-      if (includeParameters) {
-        routeDoc['required_params'] = route.requiredParams;
-        routeDoc['optional_params'] = route.optionalParams;
-      }
-
-      docs['routes'][route.name ?? route.path] = routeDoc;
+  String _html(
+    bool includeMetadata,
+    bool includeParameters,
+    DateTime? generatedAt,
+  ) {
+    final buffer = StringBuffer()
+      ..writeln('<!DOCTYPE html>')
+      ..writeln('<html lang="en"><head><meta charset="utf-8">')
+      ..writeln('<title>Route documentation</title>')
+      ..writeln('<style>')
+      ..writeln(
+        'body{font-family:system-ui,sans-serif;margin:2rem auto;max-width:60rem;padding:0 1rem}',
+      )
+      ..writeln(
+        '.route{border:1px solid #d0d7de;border-radius:6px;margin:1rem 0;padding:1rem}',
+      )
+      ..writeln(
+        'code{background:#f6f8fa;padding:.15em .35em;border-radius:3px}',
+      )
+      ..writeln('</style></head><body>')
+      ..writeln('<h1>Application routes</h1>');
+    if (generatedAt != null) {
+      buffer.writeln(
+        '<p>Generated on ${_escape(generatedAt.toIso8601String())}</p>',
+      );
     }
-
-    return jsonEncode(docs);
-  }
-
-  String _generateHtmlDocs(
-      bool includeMetadata, bool includeParameters, bool includeExamples) {
-    final buffer = StringBuffer();
-    buffer.writeln('<!DOCTYPE html>');
-    buffer.writeln('<html><head><title>Route Documentation</title>');
-    buffer.writeln('<style>');
-    buffer.writeln('body { font-family: Arial, sans-serif; margin: 40px; }');
-    buffer.writeln(
-        '.route { border: 1px solid #ddd; margin: 20px 0; padding: 20px; border-radius: 5px; }');
-    buffer.writeln(
-        '.path { background: #f5f5f5; padding: 5px; border-radius: 3px; font-family: monospace; }');
-    buffer.writeln('.required { color: #d9534f; }');
-    buffer.writeln('.optional { color: #5bc0de; }');
-    buffer.writeln('</style>');
-    buffer.writeln('</head><body>');
-    buffer.writeln('<h1>Application Routes Documentation</h1>');
-    buffer.writeln('<p>Generated on: ${DateTime.now()}</p>');
     buffer.writeln('<p>Total routes: ${_routes.length}</p>');
 
-    for (final route in _routes.values) {
-      buffer.writeln('<div class="route">');
-      buffer.writeln(
-          '<h3>${route.name ?? _extractNameFromPath(route.path)}</h3>');
-      buffer.writeln(
-          '<p><strong>Path:</strong> <span class="path">${route.path}</span></p>');
-
+    for (final route in _sorted) {
+      buffer
+        ..writeln('<div class="route">')
+        ..writeln('<h3>${_escape(route.name ?? _label(route.template))}</h3>')
+        ..writeln(
+          '<p><strong>Path:</strong> <code>${_escape(route.template)}</code></p>',
+        );
       if (includeMetadata && route.description != null) {
         buffer.writeln(
-            '<p><strong>Description:</strong> ${route.description}</p>');
+          '<p><strong>Description:</strong> ${_escape(route.description!)}</p>',
+        );
       }
-
-      if (includeParameters &&
-          (route.requiredParams.isNotEmpty ||
-              route.optionalParams.isNotEmpty)) {
-        buffer.writeln('<p><strong>Parameters:</strong></p>');
-        buffer.writeln('<ul>');
-        for (final param in route.requiredParams) {
-          buffer.writeln('<li class="required">$param (required)</li>');
-        }
-        for (final param in route.optionalParams) {
-          buffer.writeln('<li class="optional">$param (optional)</li>');
-        }
-        buffer.writeln('</ul>');
+      if (includeParameters && route.pathParameters.isNotEmpty) {
+        buffer
+          ..writeln('<p><strong>Path parameters:</strong></p><ul>')
+          ..writeAll(
+            route.pathParameters.map(
+              (p) => '<li><code>${_escape(p)}</code></li>',
+            ),
+            '\n',
+          )
+          ..writeln('</ul>');
       }
-
       buffer.writeln('</div>');
     }
 
@@ -277,135 +412,152 @@ class RouteRegistry {
     return buffer.toString();
   }
 
-  Map<String, List<RoutePaths>> _groupRoutesByCategory() {
-    final groups = <String, List<RoutePaths>>{};
+  static String _escape(String value) => value
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;');
 
-    for (final route in _routes.values) {
-      final category = _extractCategoryFromPath(route.path);
-      groups.putIfAbsent(category, () => []).add(route);
-    }
-
-    return groups;
-  }
-
-  String _extractCategoryFromPath(String path) {
-    final segments = path.split('/').where((s) => s.isNotEmpty).toList();
+  static String _category(String template) {
+    final segments = template.split('/').where((s) => s.isNotEmpty);
     if (segments.isEmpty) return 'Root';
-    final firstSegment = segments.first;
-    return firstSegment.replaceAll(RegExp(r'[^a-zA-Z]'), '').toLowerCase();
+    final first = segments.first;
+    return first.startsWith(':') ? 'Root' : first;
   }
 
-  String _extractNameFromPath(String path) {
-    return path
-        .split('/')
-        .where((s) => s.isNotEmpty && !s.startsWith(':'))
-        .join(' ');
-  }
+  static String _label(String template) => template
+      .split('/')
+      .where((s) => s.isNotEmpty && !s.startsWith(':'))
+      .join(' ');
 
-  /// Clear all registered routes
+  /// Clears every registered route, group and metadata entry.
+  ///
+  /// Call this in `setUp` when using the [RouteRegistry.new] singleton from
+  /// tests.
   void clear() {
     _routes.clear();
     _routeGroups.clear();
     _metadata.clear();
   }
 
-  /// Get registry statistics
-  RegistryStatistics get statistics {
-    return RegistryStatistics(
-      totalRoutes: _routes.length,
-      totalGroups: _routeGroups.length,
-      routesWithParams: _routes.values
-          .where(
-              (r) => r.requiredParams.isNotEmpty || r.optionalParams.isNotEmpty)
-          .length,
-    );
-  }
+  /// Counts of what is registered.
+  RegistryStatistics get statistics => RegistryStatistics(
+    totalRoutes: _routes.length,
+    totalGroups: _routeGroups.length,
+    routesWithParams: _routes.values
+        .where((r) => r.pathParameters.isNotEmpty)
+        .length,
+  );
 }
 
-/// Route metadata for documentation and analysis
+/// A snapshot of one route's shape, taken when it was registered.
 class RouteMetadata {
-  final String path;
-  final String? name;
-  final String? description;
-  final List<String> requiredParams;
-  final List<String> optionalParams;
-  final DateTime registeredAt;
-
-  RouteMetadata({
+  /// Creates a metadata snapshot.
+  const RouteMetadata({
     required this.path,
+    required this.pathParameters,
     this.name,
     this.description,
-    required this.requiredParams,
-    required this.optionalParams,
-    required this.registeredAt,
+    this.registeredAt,
   });
 
-  factory RouteMetadata.fromRoute(RoutePaths route) {
-    return RouteMetadata(
-      path: route.path,
-      name: route.name,
-      description: route.description,
-      requiredParams: route.requiredParams,
-      optionalParams: route.optionalParams,
-      registeredAt: DateTime.now(),
-    );
-  }
+  /// Snapshots [route].
+  factory RouteMetadata.fromRoute(RoutePaths route, {DateTime? registeredAt}) =>
+      RouteMetadata(
+        path: route.template,
+        name: route.name,
+        description: route.description,
+        pathParameters: route.pathParameters,
+        registeredAt: registeredAt,
+      );
 
-  Map<String, dynamic> toJson() {
-    return {
-      'path': path,
-      'name': name,
-      'description': description,
-      'requiredParams': requiredParams,
-      'optionalParams': optionalParams,
-      'registeredAt': registeredAt.toIso8601String(),
-    };
-  }
+  /// The route's absolute path template.
+  final String path;
+
+  /// The route's name.
+  final String? name;
+
+  /// The route's description.
+  final String? description;
+
+  /// The route's path parameter names.
+  final List<String> pathParameters;
+
+  /// When the route was registered, if the caller supplied a clock.
+  ///
+  /// `null` by default: reading `DateTime.now()` here would make otherwise
+  /// identical registries unequal and documentation output unreproducible.
+  final DateTime? registeredAt;
+
+  /// This snapshot as a JSON-encodable map.
+  Map<String, dynamic> toJson() => {
+    'path': path,
+    'name': name,
+    'description': description,
+    'pathParameters': pathParameters,
+    'registeredAt': registeredAt?.toIso8601String(),
+  };
 }
 
-/// Registry statistics
+/// Counts describing a [RouteRegistry]'s contents.
 class RegistryStatistics {
-  final int totalRoutes;
-  final int totalGroups;
-  final int routesWithParams;
-
+  /// Creates a statistics snapshot.
   const RegistryStatistics({
     required this.totalRoutes,
     required this.totalGroups,
     required this.routesWithParams,
   });
 
-  Map<String, dynamic> toJson() {
-    return {
-      'totalRoutes': totalRoutes,
-      'totalGroups': totalGroups,
-      'routesWithParams': routesWithParams,
-    };
-  }
+  /// How many routes are registered.
+  final int totalRoutes;
+
+  /// How many groups are registered.
+  final int totalGroups;
+
+  /// How many routes declare at least one path parameter.
+  final int routesWithParams;
+
+  /// These counts as a JSON-encodable map.
+  Map<String, dynamic> toJson() => {
+    'totalRoutes': totalRoutes,
+    'totalGroups': totalGroups,
+    'routesWithParams': routesWithParams,
+  };
+
+  @override
+  String toString() =>
+      'RegistryStatistics(routes: $totalRoutes, groups: $totalGroups, '
+      'withParams: $routesWithParams)';
 }
 
-/// Documentation format options
-enum DocumentationFormat {
-  markdown,
-  json,
-  html,
-}
-
-/// Extension for GoRoute copying
+/// Copying helpers for `GoRoute`.
 extension GoRouteExtension on GoRoute {
+  /// Returns a copy of this route with the given fields replaced.
+  ///
+  /// Every field `GoRoute` accepts is forwarded. 1.x dropped `pageBuilder`,
+  /// `onExit`, `parentNavigatorKey`, `caseSensitive` and `metadata`, so
+  /// copying a `pageBuilder`-only route produced one go_router rejects.
   GoRoute copyWith({
     String? path,
     String? name,
     Widget Function(BuildContext, GoRouterState)? builder,
-    String? Function(BuildContext, GoRouterState)? redirect,
+    Page<dynamic> Function(BuildContext, GoRouterState)? pageBuilder,
+    RouteGuard? redirect,
+    ExitCallback? onExit,
+    GlobalKey<NavigatorState>? parentNavigatorKey,
+    bool? caseSensitive,
+    Map<String, dynamic>? metadata,
     List<RouteBase>? routes,
-  }) {
-    return GoRoute(
-      path: path ?? this.path,
-      name: name ?? this.name,
-      builder: builder ?? this.builder,
-      redirect: redirect ?? this.redirect,
-      routes: routes ?? this.routes,
-    );
-  }
+  }) => GoRoute(
+    path: path ?? this.path,
+    name: name ?? this.name,
+    builder: builder ?? this.builder,
+    pageBuilder: pageBuilder ?? this.pageBuilder,
+    redirect: redirect ?? this.redirect,
+    onExit: onExit ?? this.onExit,
+    parentNavigatorKey: parentNavigatorKey ?? this.parentNavigatorKey,
+    caseSensitive: caseSensitive ?? this.caseSensitive,
+    metadata: metadata ?? this.metadata,
+    routes: routes ?? this.routes,
+  );
 }

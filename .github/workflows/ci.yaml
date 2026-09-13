@@ -1,0 +1,179 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  runtime:
+    name: runtime (stable)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: dart format --output=none --set-exit-if-changed lib test
+      - run: flutter analyze --fatal-infos
+      - run: flutter test --coverage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage/lcov.info
+
+  runtime-floor:
+    # The lowest Flutter pubspec.yaml admits. Pub resolves go_router 17.5.0
+    # here, so this is also what proves the go_router floor compiles. No format
+    # check: formatter output legitimately differs between Dart versions.
+    name: runtime (Flutter 3.38.0 floor)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.38.0
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+
+  runtime-lower-bounds:
+    name: runtime (lowest resolvable dependencies)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      # `pub downgrade` is the only thing that proves the *lower* bound of
+      # every constraint resolves and compiles. Without it a floor is a guess.
+      - run: flutter pub downgrade
+      - run: flutter analyze --fatal-infos
+      - run: flutter test
+
+  generator:
+    name: generator (${{ matrix.resolution }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        resolution: [upgrade, downgrade]
+    defaults:
+      run:
+        working-directory: generator
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+      - run: dart pub ${{ matrix.resolution }}
+      # A downgrade also drags the *test runner's* transitive dependencies to
+      # releases that predate the current SDK's frontend snapshot. Lift only
+      # those, so the generator's own dependencies stay at their floor.
+      - if: matrix.resolution == 'downgrade'
+        run: dart pub upgrade frontend_server_client test_core test
+      - run: dart format --output=none --set-exit-if-changed lib test
+      - run: dart analyze --fatal-infos
+      - run: dart test ${{ matrix.resolution == 'downgrade' && '-x latest-resolution' || '' }}
+
+  codegen:
+    name: example codegen is committed and up to date
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+        working-directory: example
+      # Bounded: a generator that hangs must fail the build rather than sit
+      # until the job's global timeout. This is the regression guard for
+      # issue #3.
+      - run: dart run build_runner build
+        working-directory: example
+        timeout-minutes: 10
+      - name: the committed output matches a fresh build
+        # `git status --porcelain` rather than `git diff`: a diff is blind to a
+        # newly generated file that was never committed.
+        run: |
+          changes="$(git status --porcelain -- example/lib)"
+          if [ -n "$changes" ]; then
+            echo "Generated code is stale or uncommitted:"
+            echo "$changes"
+            git --no-pager diff -- example/lib
+            exit 1
+          fi
+      - run: flutter analyze --fatal-infos
+        working-directory: example
+      - run: flutter test
+        working-directory: example
+
+  example-builds:
+    name: example builds for ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: web
+            build: flutter build web --release
+          - os: ubuntu-latest
+            target: android
+            build: flutter build apk --debug
+          - os: macos-latest
+            target: ios
+            build: flutter build ios --debug --no-codesign
+          - os: macos-latest
+            target: macos
+            build: flutter build macos --debug
+    defaults:
+      run:
+        working-directory: example
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: ${{ matrix.build }}
+
+  publish-dry-run:
+    name: pub publish --dry-run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter pub publish --dry-run
+      - run: dart pub get
+        working-directory: generator
+      - run: dart pub publish --dry-run
+        working-directory: generator
+
+  pana:
+    name: pub.dev score
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: dart pub global activate pana
+      - run: pana --no-warning --exit-code-threshold 20 .

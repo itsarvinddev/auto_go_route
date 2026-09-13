@@ -1,33 +1,45 @@
-// lib/src/presentation/screens/dashboard_shell.dart
 import 'package:auto_go_route/auto_go_route.dart';
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 
-@AutoGoRouteShell(path: '/', isStateful: true)
+import '../../app_router.dart';
+
+/// The bottom-navigation shell.
+///
+/// `isStateful: true` makes each child a `StatefulShellBranch` with its own
+/// navigator, so switching tabs preserves each tab's stack.
+@AutoGoRouteShell(
+  path: '/',
+  isStateful: true,
+  description: 'Bottom navigation shell. Each child route becomes a branch.',
+)
 class DashboardShell extends StatelessWidget {
-  final StatefulNavigationShell navigationShell;
-
+  /// Creates the shell.
   const DashboardShell({super.key, required this.navigationShell});
+
+  /// The shell go_router hands in, carrying the branch navigators.
+  final StatefulNavigationShell navigationShell;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: navigationShell,
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: navigationShell.currentIndex,
-        onTap: (index) {
-          navigationShell.goBranch(
-            index,
-            initialLocation: index == navigationShell.currentIndex,
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: navigationShell.currentIndex,
+        // The generated `DashboardShellBranch` enum follows the branches'
+        // `order:` values, so a destination's position and the branch it
+        // opens cannot drift apart.
+        onDestinationSelected: (index) {
+          final branch = DashboardShellBranch.values[index];
+          branch.go(
+            navigationShell,
+            // Tapping the active tab returns it to its root.
+            initialLocation: branch.isActiveIn(navigationShell),
           );
         },
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.settings),
-            label: 'Settings',
-          ),
+        destinations: const [
+          NavigationDestination(icon: Icon(Icons.home), label: 'Home'),
+          NavigationDestination(icon: Icon(Icons.person), label: 'Profile'),
+          NavigationDestination(icon: Icon(Icons.settings), label: 'Settings'),
         ],
       ),
     );

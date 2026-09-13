@@ -1,0 +1,34 @@
+# `.pubignore` REPLACES `.gitignore` for `pub publish`, so everything that
+# should stay out of the archive has to be restated here.
+.dart_tool/
+build/
+coverage/
+.idea/
+.vscode/
+.github/
+*.iml
+*.log
+.DS_Store
+pubspec.lock
+pubspec_overrides.yaml
+
+# The 1.x poster. It stays in git because published 1.x READMEs link to it on
+# GitHub; the 2.x gallery lives in screenshots/.
+/auto_go_route.webp
+
+# NOTE: do NOT exclude `generator/` here. pub applies an ancestor .pubignore
+# to a nested package too, so any pattern naming that directory hides the
+# generator's own pubspec when publishing from generator/ — verified with
+# `dart pub publish --dry-run`. Shipping the generator's sources inside this
+# archive is the lesser cost.
+
+# Platform runners bloat the archive without helping anyone reading the
+# example on pub.dev. The Dart sources under example/lib are what matter.
+example/android/
+example/ios/
+example/linux/
+example/macos/
+example/windows/
+example/web/
+example/.dart_tool/
+example/build/

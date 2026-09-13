@@ -1,4 +1,19 @@
 include: package:flutter_lints/flutter.yaml
 
-# Additional information about this file can be found at
-# https://dart.dev/guides/language/analysis-options
+analyzer:
+  exclude:
+    - build/**
+    - example/**
+  language:
+    strict-casts: true
+    strict-inference: true
+    strict-raw-types: true
+
+linter:
+  rules:
+    # `auto_go_route` is a published library, so every public member is
+    # documentation the reader will actually hit.
+    - public_member_api_docs
+    - prefer_single_quotes
+    - unawaited_futures
+    - avoid_print

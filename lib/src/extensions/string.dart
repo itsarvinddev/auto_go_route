@@ -1,16 +1,32 @@
+/// String helpers used when reading route parameters.
 extension StringExtension on String {
-  /// Returns true only if [this] equals to be true (insensitive of case) or
-  /// if a non-zero integer.
+  /// Parses this string as a boolean, or returns `null` when it is not one.
   ///
-  /// e.g
-  ///         'true'.toBoolOrNull()             // returns true
-  ///         'TRUE'.toBoolOrNull()             // returns true
-  ///         'FALSE'.toBoolOrNull()            // returns false
-  ///         'something'.toBoolOrNull()        // returns null
-  ///         '1'.toBoolOrNull()                // returns true
-  ///         '0'.toBoolOrNull()                // returns false
+  /// Accepts `true`/`false` in any case, and any integer — zero is `false`,
+  /// everything else `true`. Anything else is `null`.
+  ///
+  /// ```dart
+  /// 'true'.toBoolOrNull();      // true
+  /// 'TRUE'.toBoolOrNull();      // true
+  /// 'false'.toBoolOrNull();     // false
+  /// '1'.toBoolOrNull();         // true
+  /// '0'.toBoolOrNull();         // false
+  /// '-3'.toBoolOrNull();        // true
+  /// 'something'.toBoolOrNull(); // null
+  /// ''.toBoolOrNull();          // null
+  /// ```
+  ///
+  /// In 1.x this returned `true` for unrecognised input — `?admin=no` read as
+  /// `true` — because `int.tryParse('no') != 0` is `null != 0`.
   bool? toBoolOrNull() {
-    if (toLowerCase() == 'true') return true;
-    return toLowerCase() != 'false' ? int.tryParse(this) != 0 : false;
+    switch (toLowerCase()) {
+      case 'true':
+        return true;
+      case 'false':
+        return false;
+    }
+    final asInt = int.tryParse(this);
+    if (asInt != null) return asInt != 0;
+    return null;
   }
 }

@@ -1,0 +1,253 @@
+# auto_go_route
+
+> Type-safe, code-generated routing for Flutter on top of go_router. Annotate
+> widgets with @AutoGoRoute; a build_runner generator writes the GoRouter
+> configuration, typed URL builders and typed BuildContext navigation helpers.
+
+This file is a compact, authoritative brief for AI coding assistants. When it
+disagrees with older blog posts or 1.x examples, this file wins.
+
+- Version: 2.0.x
+- Requires: Flutter >=3.38, Dart >=3.10, go_router >=17.5.0 <19.0.0
+- Docs: https://pub.dev/packages/auto_go_route
+- Source & example app: https://github.com/itsarvinddev/auto_go_route
+- Migration from 1.x: https://github.com/itsarvinddev/auto_go_route/blob/main/MIGRATION.md
+
+## Install
+
+```yaml
+dependencies:
+  auto_go_route: ^2.0.0      # re-exports go_router — do NOT add go_router separately
+dev_dependencies:
+  auto_go_route_generator: ^2.0.0
+  build_runner: ^2.16.1
+```
+
+Generate with `dart run build_runner build` (or `watch`). The flag
+`--delete-conflicting-outputs` is obsolete in build_runner 2.16+; do not add it.
+
+## Rules an assistant must follow
+
+1. Declare routes by annotating the screen widget. Never hand-write `GoRoute(...)`
+   for an annotated screen, and never edit a `*.routes.g.dart` file.
+2. Exactly one router library per app (per `sourceGlobs` scope):
+   `part '<file>.routes.g.dart';` + `@AutoGoRouteBase(...) class X extends _$X {}`.
+3. The router library must import every annotated widget, every type used by
+   their constructor parameters, and every function/key named in an annotation
+   string. `package:auto_go_route/auto_go_route.dart` covers Flutter/go_router
+   types used by generated code.
+4. Annotation references are STRINGS naming top-level/static identifiers:
+   `middleware: ['requireAuth']`, `errorWidget: 'ErrorScreen.new'`,
+   `parentNavigatorKey: 'rootNavigatorKey'`.
+5. Build the router once, outside `build()`: `final router = AppRouter().buildRouter(...)`.
+   Pass runtime objects (refreshListenable, observers) as `buildRouter` arguments.
+6. Navigate with the generated helpers (`context.goToX(...)`), not string paths.
+7. After changing annotations or constructor parameters, rerun build_runner.
+
+## Minimal setup
+
+```dart
+// lib/pages/product_page.dart
+import 'package:auto_go_route/auto_go_route.dart';
+import 'package:flutter/material.dart';
+
+@AutoGoRoute(path: '/products/:id', description: 'Product details')
+class ProductPage extends StatelessWidget {
+  const ProductPage({super.key, required this.id, this.tab});
+  final int id;        // path parameter (name appears in the path), decoded as int
+  final String? tab;   // query parameter (?tab=...)
+  @override
+  Widget build(BuildContext context) => Text('Product $id');
+}
+
+// lib/app_router.dart
+import 'package:auto_go_route/auto_go_route.dart';
+import 'pages/product_page.dart';
+part 'app_router.routes.g.dart';
+
+@AutoGoRouteBase(initialLocation: '/products/1')
+class AppRouter extends _$AppRouter {}
+
+// lib/main.dart
+final router = AppRouter().buildRouter();
+void main() => runApp(MaterialApp.router(routerConfig: router));
+```
+
+## Parameter classification (per constructor parameter, in order)
+
+1. `key` and a shell's child slot are skipped.
+2. Explicit markers win: `@PathParam(['wireName'])`, `@QueryParam(['wireName'])`,
+   `@RouteExtra()`, `@RouteIgnore()` (on the field or the parameter).
+3. Name appears in the resolved path → path parameter.
+4. Type is URL-representable → query parameter.
+5. Otherwise → `state.extra` (max ONE per route; make it nullable — extra is lost
+   on deep links, reloads and restoration).
+
+URL-representable types: String, int, double, num, bool, BigInt, DateTime, Uri,
+any enum (nullable or not); `List<T>` of those as repeated query keys only.
+
+Build errors to avoid:
+- `:id?` optional path segments do not exist → use a nullable query param or two routes.
+- A required non-nullable query param with no default.
+- Constructor params named `queries`, `fragment` or `extra` (rename; keep the
+  wire name with `@QueryParam('queries')`).
+- Route `name:` must be a valid Dart identifier, unique after capitalisation.
+
+## Generated API (for a widget `ProductPage` with route name `productPage`)
+
+```dart
+context.goToProductPage(id: 42, tab: 'reviews');            // go
+context.pushToProductPage<bool>(id: 42);                     // push, Future<bool?>
+context.replaceWithProductPage(id: 42);                      // pushReplacement
+context.replaceInPlaceWithProductPage(id: 42);               // replace
+context.locationOfProductPage(id: 42);                       // '/products/42' (no navigation)
+// every helper also takes: Map<String, dynamic>? queries, String? fragment, extra
+
+ProductPageRoute.routeName;       // 'productPage'
+ProductPageRoute.routeTemplate;   // '/products/:id'
+appRouter.productPageRoute.pathWith(id: 42);
+
+appRouter.routes;                 // List<RouteBase>
+appRouter.buildRouter({...every GoRouter option, defaulting to the annotation});
+appRouter.buildRoutingConfig();   // RoutingConfig for dynamic routing
+appRouter.buildDynamicRouter(routingConfig: valueNotifier);
+AppRoute.values;                  // enum of all routes (name + template)
+DashboardShellBranch.values;      // enum per stateful shell, in tab order
+```
+
+The generated class is `<WidgetClass>Route` and the helper suffix is the route
+name capitalised. Default route name = widget class name in lowerCamelCase.
+
+## Nesting
+
+```dart
+@AutoGoRoute(path: 'reviews', parent: ProductPage)   // relative path
+class ReviewsPage extends StatelessWidget {
+  const ReviewsPage({super.key, required this.id});  // inherits :id
+  final int id;
+}
+// → /products/:id/reviews ; context.goToReviewsPage(id: 42)
+```
+
+## Shells
+
+Stateless shell (shared chrome around children):
+```dart
+@AutoGoRouteShell(path: '/settings-area', initialRoute: '/general')
+class SettingsShell extends StatelessWidget {
+  const SettingsShell({super.key, required this.child});
+  final Widget child;
+  ...
+}
+@AutoGoRoute(path: '/general', parent: SettingsShell)
+class GeneralPage extends StatelessWidget { ... }
+```
+
+Stateful shell (bottom navigation, preserved tab state):
+```dart
+@AutoGoRouteShell(path: '/', isStateful: true)
+class DashboardShell extends StatelessWidget {
+  const DashboardShell({super.key, required this.navigationShell});
+  final StatefulNavigationShell navigationShell;
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: navigationShell,
+    bottomNavigationBar: NavigationBar(
+      selectedIndex: navigationShell.currentIndex,
+      onDestinationSelected: (i) {
+        final branch = DashboardShellBranch.values[i];
+        branch.go(navigationShell, initialLocation: branch.isActiveIn(navigationShell));
+      },
+      destinations: const [...],
+    ),
+  );
+}
+
+@AutoGoRoute(path: '/feed', parent: DashboardShell, order: 0)
+@AutoGoRouteBranch(preload: true)
+class FeedPage extends StatelessWidget { ... }
+```
+
+Shell facts:
+- Shells contribute no URL segment: `/feed` above is at `/feed`.
+- A root shell at `/` gets an automatic redirect from `/` to its first branch.
+- A shell's own path redirects to `initialRoute` (default: first parameter-free child).
+- Stateful shells: put `navigatorKey`/`observers`/`preload`/`initialLocation` on
+  `@AutoGoRouteBranch` on the child; a branch whose first route has path
+  parameters needs `@AutoGoRouteBranch(initialLocation: '...')`.
+- Switch tabs from inside a branch: `DashboardShellBranch.settings.goFrom(context)`.
+
+## Guards and redirects
+
+```dart
+// Route-level guard (in the router library)
+FutureOr<String?> requireAuth(BuildContext context, GoRouterState state) =>
+    authService.isLoggedIn ? null : '/login';
+
+@AutoGoRoute(path: '/profile', middleware: ['requireAuth'])
+class ProfilePage extends StatelessWidget { ... }
+
+// Recommended: one top-level guard reading route metadata
+@AutoGoRoute(path: '/admin', metadata: {'requiresRole': 'admin'})
+class AdminPage extends StatelessWidget { ... }
+
+FutureOr<String?> appRedirect(BuildContext context, GoRouterState state) {
+  final role = state.metadataAs<String>('requiresRole');
+  return role != null && authService.role != role ? '/home' : null;
+}
+
+@AutoGoRouteBase(redirect: 'appRedirect')
+class AppRouter extends _$AppRouter {}
+
+final router = AppRouter().buildRouter(refreshListenable: authService);
+```
+
+Order: route `redirect:` runs before `middleware:`; first non-null wins.
+`onExit: 'confirmLeave'` (FutureOr<bool> Function(BuildContext, GoRouterState))
+asks before a route is popped. `onEnter:` on @AutoGoRouteBase runs before every
+navigation (return `Allow()` / `Block.stop()`).
+
+## Pages and transitions
+
+```dart
+@AutoGoRoute(
+  path: '/compose',
+  transition: AutoRouteTransition.slideUp,   // platform, material, cupertino, fade,
+  transitionDurationMs: 250,                 // slide, slideUp, slideDown, scale, rotation, none
+  fullscreenDialog: true,
+  parentNavigatorKey: 'rootNavigatorKey',    // draw over a shell
+)
+```
+For a key named in `parentNavigatorKey`, also set
+`@AutoGoRouteBase(navigatorKey: 'rootNavigatorKey')`.
+Custom page: `pageBuilder: 'myPageBuilder'` (not together with `transition:`).
+Bottom sheet / dialog with a real URL: shell `pageBuilder` returning
+`AdaptiveOverlayPage(child: child)`.
+
+## @AutoGoRouteBase options
+
+navigatorKey, initialLocation, initialExtra, errorWidget | errorBuilder |
+errorPageBuilder | onException (at most ONE), redirect, onEnter, observers,
+refreshListenable, extraCodec, redirectLimit, routerNeglect, debugLogDiagnostics,
+overridePlatformDefaultLocation, requestFocus, restorationScopeId, caseSensitive
+(default for routes), navigatorExtensionName, generateRouteEnum, sourceGlobs.
+
+## Reading parameters by hand (guards, onExit, tests)
+
+```dart
+RouteCodec.requireInt(state, 'id');
+RouteCodec.optionalEnum(state, 'sort', Sort.values);
+state.getParam<int?>('page');
+state.getOptionalParam<int>('page', 1);
+state.metadataAs<bool>('requiresAuth');
+state.extraAs<Product>();
+```
+Malformed values throw `RouteParamFormatException`.
+
+## Troubleshooting
+
+- `Undefined name` / build error listing missing names → import them into the router library.
+- Build hangs or `visitDotShorthandPropertyAccess` → you are on 1.x; upgrade to 2.0.
+- `ambiguous_extension_member_access` on `pushNamed` → 1.x; upgrade.
+- Route missing → routes outside `lib/` are not scanned by default (use `sourceGlobs`).
+- Two routers in one package → give each `@AutoGoRouteBase(sourceGlobs: [...])`.
