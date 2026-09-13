@@ -1,104 +1,62 @@
-// lib/src/base/nested_route_paths.dart
 import 'route_paths.dart';
 
-/// Base class for nested route definitions
+/// Base class for a generated route that nests under a parent route or shell.
+///
+/// The only thing that changes versus [RoutePaths] is [template]: the absolute
+/// pattern is the parent's pattern with this route's relative [path] appended,
+/// which is what parameter discovery and URL building need. The `path` handed
+/// to `GoRoute` stays relative, because go_router resolves nesting itself.
 abstract class NestedRoutePaths extends RoutePaths {
+  /// Creates a nested route definition.
+  ///
+  /// [parentTemplate] is the parent's absolute pattern, supplied by the
+  /// generator.
   const NestedRoutePaths({
-    required this.parentPath,
+    required this.parentTemplate,
     required super.path,
     super.name,
-    required super.builder,
+    super.builder,
+    super.pageBuilder,
     super.description,
     super.middleware,
+    super.redirect,
+    super.onExit,
+    super.parentNavigatorKey,
+    super.caseSensitive,
+    super.metadata,
   });
 
-  final String parentPath;
+  /// The parent's absolute path pattern.
+  final String parentTemplate;
 
-  /// Get the full absolute path, correctly joining parent and child paths.
-  String get fullPath {
-    // Ensure parent path doesn't have a trailing slash
-    final effectiveParent = parentPath.endsWith('/')
-        ? parentPath.substring(0, parentPath.length - 1)
-        : parentPath;
+  /// The parent's absolute path pattern.
+  ///
+  /// Retained for source compatibility with 1.x, where this was the
+  /// constructor argument's name.
+  String get parentPath => parentTemplate;
 
-    // Ensure child path doesn't have a leading slash
-    final effectivePath = path.startsWith('/') ? path.substring(1) : path;
-
-    // Handle root case
-    if (effectiveParent == '/') {
-      return '/$effectivePath';
-    }
-
-    return '$effectiveParent/$effectivePath';
-  }
-
-  /// Override to scan the `fullPath` for required parameters.
   @override
-  List<String> get requiredParams {
-    return RegExp(r':(\w+)(?!\?)')
-        .allMatches(fullPath)
-        .map((match) => match.group(1)!)
-        .toSet() // Use toSet() to remove duplicates from parent paths
-        .toList();
-  }
+  String get template => _concatenate(parentTemplate, path);
 
-  /// Override to scan the `fullPath` for optional parameters.
-  @override
-  List<String> get optionalParams {
-    return RegExp(r':(\w+)\?')
-        .allMatches(fullPath)
-        .map((match) => match.group(1)!)
-        .toSet()
-        .toList();
-  }
+  /// The route's absolute path pattern.
+  ///
+  /// Retained for source compatibility with 1.x.
+  String get fullPath => template;
 
-  /// Override `pathWithParams` to use the `fullPath` as the template.
-  @override
-  String pathWithParams(
-    Map<String, String> params, {
-    Map<String, String>? queries,
-    bool validate = true,
-  }) {
-    if (validate) {
-      validateParams(params);
-    }
-
-    // Use `fullPath` as the template instead of the relative `path`.
-    String finalPath = fullPath;
-
-    // Handle required parameters
-    for (final param in requiredParams) {
-      finalPath = finalPath.replaceAll(
-        ':$param',
-        Uri.encodeComponent(params[param]!),
-      );
-    }
-
-    // Handle optional parameters
-    for (final param in optionalParams) {
-      if (params.containsKey(param) && params[param]!.isNotEmpty) {
-        finalPath = finalPath.replaceAll(
-          ':$param?',
-          Uri.encodeComponent(params[param]!),
-        );
-      } else {
-        // Also remove the preceding slash for an optional param if it's not provided
-        finalPath = finalPath.replaceAll('/:$param?', '');
-      }
-    }
-
-    // Add query parameters
-    if (queries != null && queries.isNotEmpty) {
-      final queryString = queries.entries
-          .map((e) =>
-              '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
-          .join('&');
-      finalPath += '?$queryString';
-    }
-
-    return finalPath;
+  /// Joins a parent and child pattern the way go_router's `concatenatePaths`
+  /// does: split on `/`, drop empty segments, re-join from the root.
+  ///
+  /// Matching that implementation is what guarantees the URL this class builds
+  /// is the URL go_router will match — a plain string concatenation gets `//`,
+  /// trailing slashes and an absolute child path all subtly wrong.
+  static String _concatenate(String parent, String child) {
+    final segments = <String>[
+      ...parent.split('/'),
+      ...child.split('/'),
+    ].where((segment) => segment.isNotEmpty);
+    return '/${segments.join('/')}';
   }
 
   @override
-  List<Object?> get props => [...super.props, parentPath];
+  List<Object?> get props => [...super.props, parentTemplate];
 }

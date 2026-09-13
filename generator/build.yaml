@@ -1,12 +1,3 @@
-targets:
-  $default:
-    builders:
-      auto_go_route_generator:auto_go_route_builder:
-        enabled: true
-        generate_for:
-          - lib/**
-          - test/**
-
 builders:
   auto_go_route_builder:
     import: "package:auto_go_route_generator/builder.dart"
@@ -14,9 +5,16 @@ builders:
     build_extensions:
       ".dart": [".routes.g.dart"]
     auto_apply: dependents
+    # `part` files must sit next to the library they belong to.
     build_to: source
-    required_inputs: [".dart"]
+    # NO `required_inputs`. This builder reads unprocessed Dart source, and an
+    # entry that is a *suffix* of anything this package emits creates a build
+    # plan cycle. `.routes.g.dart` ends with both `.dart` and `.g.dart`, so
+    # both are permanently off-limits. 1.x declared `required_inputs: [".dart"]`,
+    # which forced this builder to wait behind every other Dart generator and
+    # dragged generated libraries into its own annotation scan.
     defaults:
       generate_for:
-        - lib/**
-        - bin/**
+        include:
+          - lib/**
+          - test/**

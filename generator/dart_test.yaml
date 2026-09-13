@@ -1,0 +1,5 @@
+tags:
+  # Asserts properties of the *newest* dependency resolution — for instance
+  # that the resolved analyzer keeps up with the SDK's language version. The
+  # CI job that deliberately resolves the lowest versions excludes it.
+  latest-resolution:

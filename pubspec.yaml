@@ -1,40 +1,57 @@
 name: auto_go_route
-version: 1.1.0
-description: A powerful, type-safe, and feature-rich routing package for Flutter GoRouter with automatic code generation.
+version: 2.0.0
+description: Type-safe, code-generated routing for Flutter. Full go_router feature parity with typed path and query parameters, shells, guards and transitions.
 
 homepage: https://github.com/itsarvinddev/auto_go_route
 repository: https://github.com/itsarvinddev/auto_go_route
 issue_tracker: https://github.com/itsarvinddev/auto_go_route/issues
-documentation: https://pub.dev/documentation/ai_barcode_scanner/latest/
 
 environment:
-  sdk: ">=3.0.0 <4.0.0"
-  flutter: ">=3.0.0"
+  sdk: ">=3.10.0 <4.0.0"
+  # 3.38.1, not 3.38.0: Flutter 3.38.0 stable bundles Dart 3.10.0-290.4.beta,
+  # a pre-release that `>=3.10.0` (and go_router 17.5.0's `^3.10.0`) excludes.
+  flutter: ">=3.38.1"
 
 dependencies:
   flutter:
     sdk: flutter
   equatable: ^2.0.7
-  go_router: ^16.2.4
+  # Floor is 17.5.0: the lowest version exposing route `metadata`, which the
+  # `@AutoGoRoute(metadata:)` field forwards. The ceiling admits 18.x, which
+  # pub selects on Flutter >= 3.44.
+  go_router: ">=17.5.0 <19.0.0"
 
+# No build_runner or generator here: this package contains no generated code.
+# Carrying them as dev_dependencies only raised the SDK needed to resolve the
+# package — build_runner 2.16 needs Dart 3.11, above the 3.10 floor declared
+# above — so the lowest supported Flutter could not even run `pub get` on it.
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
-  build_runner: ">=2.0.0 <5.0.0"
-  auto_go_route_generator:
-    path: generator/
 
 topics:
   - routing
   - navigation
-  - auto-route
   - go-router
+  - codegen
   - type-safety
 
 screenshots:
-  - description: "Poster of auto_go_route"
-    path: "auto_go_route.webp"
+  - description: "auto_go_route: routes generated from widgets, typed queries, typed path parameters and guards"
+    path: screenshots/showcase.webp
+  - description: "Home screen of the example app listing generated routes inside a stateful shell"
+    path: screenshots/home.webp
+  - description: "Product list driven by typed enum and list query parameters"
+    path: screenshots/typed_query.webp
+  - description: "Product details decoding a typed path parameter, a query parameter and extra"
+    path: screenshots/typed_path_extra.webp
+  - description: "Metadata-driven guard redirecting to the sign-in screen"
+    path: screenshots/guard_redirect.webp
+  - description: "Nested shell with tabs inside a stateful branch"
+    path: screenshots/nested_shells.webp
+  - description: "Adaptive overlay: a bottom sheet with its own URL"
+    path: screenshots/adaptive_overlay.webp
 
 funding:
   - https://github.com/sponsors/itsarvinddev

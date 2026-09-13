@@ -1,149 +1,129 @@
-// generator/lib/src/utils/generator_utils.dart
+/// The path-parameter grammar go_router uses, including regular expression
+/// constraints.
+///
+/// Byte-identical to `patternToRegExp`'s pattern in go_router's
+/// `path_utils.dart`. Any divergence here means the parameters this generator
+/// emits helpers for are not the ones go_router will bind.
+final RegExp parameterRegExp = RegExp(r':(\w+)(\((?:\\.|[^\\()])+\))?');
 
-import 'package:analyzer/dart/element/element.dart';
-import 'package:auto_go_route_generator/src/generators/route_generator.dart'
-    show RouteInfo;
+/// A Dart identifier that can safely be interpolated into generated code.
+final RegExp dartIdentifierRegExp = RegExp(r'^[a-zA-Z_$][a-zA-Z0-9_$]*$');
 
-/// Utility functions for code generation
-class GeneratorUtils {
-  /// Extract parameters from route path
-  static PathParameters extractParametersFromPath(String path) {
-    final required = <String>[];
-    final optional = <String>[];
-
-    final requiredPattern = RegExp(r':(\w+)(?!\?)');
-    final optionalPattern = RegExp(r':(\w+)\?');
-
-    for (final match in requiredPattern.allMatches(path)) {
-      required.add(match.group(1)!);
+/// Helpers shared by the generator's analysis and emission phases.
+abstract final class GeneratorUtils {
+  /// The path parameter names declared in [template], in order and without
+  /// duplicates.
+  static List<String> pathParameterNames(String template) {
+    final seen = <String>{};
+    for (final match in parameterRegExp.allMatches(template)) {
+      seen.add(match.group(1)!);
     }
+    return seen.toList(growable: false);
+  }
 
-    for (final match in optionalPattern.allMatches(path)) {
-      optional.add(match.group(1)!);
+  /// Every path parameter name in [template], including repeats.
+  ///
+  /// Used to report a duplicated parameter, which would otherwise emit a
+  /// method with two same-named arguments and an unparseable output file.
+  static List<String> allPathParameterNames(String template) => [
+    for (final match in parameterRegExp.allMatches(template)) match.group(1)!,
+  ];
+
+  /// Whether [template] declares an optional path parameter (`:id?`).
+  ///
+  /// go_router has no such thing, so this is rejected with a build error
+  /// pointing at the two things that do work.
+  static bool hasOptionalPathParameter(String template) {
+    for (final match in parameterRegExp.allMatches(template)) {
+      if (match.end < template.length && template[match.end] == '?') {
+        return true;
+      }
     }
-
-    return PathParameters(required: required, optional: optional);
+    return false;
   }
 
-  /// Convert path to valid class name
-  static String pathToClassName(String path) {
-    return path
-        .split('/')
-        .where((segment) => segment.isNotEmpty && !segment.startsWith(':'))
-        .map((segment) => _capitalize(segment))
-        .join('');
+  /// Joins a parent and child path pattern the way go_router's
+  /// `concatenatePaths` does: split on `/`, drop empty segments, re-join from
+  /// the root.
+  ///
+  /// Matching that exactly is what makes the generated URL the URL go_router
+  /// matches. It also means a child path written absolutely (`/details`) is
+  /// concatenated rather than replacing the parent — see
+  /// [childPathLooksAbsolute].
+  static String concatenatePaths(String parent, String child) {
+    final segments = <String>[
+      ...parent.split('/'),
+      ...child.split('/'),
+    ].where((segment) => segment.isNotEmpty);
+    return '/${segments.join('/')}';
   }
 
-  /// Convert parameter name to camelCase
-  static String toCamelCase(String input) {
-    final words = input.split(RegExp(r'[_\-\s]+'));
-    if (words.isEmpty) return input;
+  /// Whether [childPath] was written as though it were absolute while its
+  /// parent contributes a real prefix.
+  ///
+  /// Not an error — go_router concatenates regardless — but worth warning
+  /// about, because the author probably expected the leading slash to mean
+  /// "from the root".
+  static bool childPathLooksAbsolute(String childPath, String parentTemplate) =>
+      childPath.startsWith('/') &&
+      parentTemplate.isNotEmpty &&
+      parentTemplate != '/';
 
-    final first = words.first.toLowerCase();
-    final rest = words.skip(1).map(_capitalize);
+  /// `input` with its first character lower-cased.
+  static String toLowerCamelCase(String input) =>
+      input.isEmpty ? '' : input[0].toLowerCase() + input.substring(1);
 
-    return [first, ...rest].join('');
-  }
+  /// `input` with its first character upper-cased.
+  ///
+  /// Only the first character changes, so an acronym keeps its shape:
+  /// `httpRoute` becomes `HttpRoute`, and `HTTPRoute` stays `HTTPRoute`.
+  static String toUpperCamelCase(String input) =>
+      input.isEmpty ? '' : input[0].toUpperCase() + input.substring(1);
 
-  /// Convert string to PascalCase
-  static String toPascalCase(String input) {
-    return input.split(RegExp(r'[_\-\s]+')).map(_capitalize).join('');
-  }
+  /// Whether [value] can be interpolated into generated code as an identifier.
+  static bool isDartIdentifier(String value) =>
+      dartIdentifierRegExp.hasMatch(value);
 
-  /// Capitalize first letter
-  static String _capitalize(String input) {
-    if (input.isEmpty) return input;
-    return input[0].toUpperCase() + input.substring(1).toLowerCase();
-  }
-
-  /// Get Dart type from parameter element
-  static String getDartType(TypeParameterElement parameter) {
-    final type = parameter.toString();
-
-    if (type.contains('<') && type.contains('>')) {
-      return type.replaceAll(RegExp(r'<[^>]*>'), '');
+  /// Whether [reference] is a valid reference to a function, constructor or
+  /// static member — `foo`, `Foo.new`, `Foo.bar`, `prefix.foo`.
+  static bool isFunctionReference(String reference) {
+    if (reference.isEmpty) return false;
+    final parts = reference.split('.');
+    if (parts.length > 3) return false;
+    for (var i = 0; i < parts.length; i++) {
+      final part = parts[i];
+      if (part == 'new' && i > 0) continue;
+      if (!isDartIdentifier(part)) return false;
     }
-
-    return type;
+    return true;
   }
 
-  /// Check if parameter is nullable
-  static bool isNullable(TypeParameterElement parameter) {
-    return parameter.toString().endsWith('?');
+  /// The leading identifier of a function [reference], the part that has to
+  /// resolve in the router library's scope.
+  static String rootIdentifierOf(String reference) =>
+      reference.split('.').first;
+
+  /// [value] as a single-quoted Dart string literal.
+  static String stringLiteral(String value) {
+    final escaped = value
+        .replaceAll(r'\', r'\\')
+        .replaceAll("'", r"\'")
+        .replaceAll(r'$', r'\$')
+        .replaceAll('\n', r'\n')
+        .replaceAll('\r', r'\r');
+    return "'$escaped'";
   }
 
-  /// Generate method name from path
-  static String generateMethodName(String path, String prefix) {
+  /// A route's declared path as a name slug, for the rare route that supplies
+  /// neither a `name` nor a usable class name.
+  static String slugFromPath(String path) {
     final segments = path
         .split('/')
         .where((s) => s.isNotEmpty && !s.startsWith(':'))
-        .toList();
-
-    if (segments.isEmpty) return '${prefix}Root';
-
-    return prefix + segments.map(_capitalize).join('');
+        .map((s) => s.replaceAll(RegExp(r'[^a-zA-Z0-9]+'), '_'))
+        .where((s) => s.isNotEmpty);
+    if (segments.isEmpty) return 'root';
+    final joined = segments.join('_').toLowerCase();
+    return dartIdentifierRegExp.hasMatch(joined) ? joined : 'root';
   }
-
-  /// Validate route path format
-  static List<String> validatePath(String path) {
-    final errors = <String>[];
-
-    if (path.isEmpty) {
-      errors.add('Path cannot be empty');
-    }
-
-    if (!path.startsWith('/')) {
-      errors.add('Path must start with /');
-    }
-
-    final invalidParams = RegExp(r':([^a-zA-Z_]|\d)');
-    if (invalidParams.hasMatch(path)) {
-      errors.add('Parameter names must start with letter or underscore');
-    }
-
-    final params = extractParametersFromPath(path);
-    final allParams = [...params.required, ...params.optional];
-    final uniqueParams = allParams.toSet();
-
-    if (allParams.length != uniqueParams.length) {
-      errors.add('Duplicate parameters found in path');
-    }
-
-    return errors;
-  }
-
-  /// Generate documentation comment
-  static String generateDocComment(RouteInfo routeInfo) {
-    final buffer = StringBuffer();
-    buffer.writeln('/// Generated route for ${routeInfo.className}');
-
-    if (routeInfo.description != null) {
-      buffer.writeln('/// ${routeInfo.description}');
-    }
-
-    buffer.writeln('/// Path: ${routeInfo.path}');
-
-    if (routeInfo.requiredParams.isNotEmpty) {
-      buffer.writeln(
-          '/// Required parameters: ${routeInfo.requiredParams.join(', ')}');
-    }
-
-    if (routeInfo.optionalParams.isNotEmpty) {
-      buffer.writeln(
-          '/// Optional parameters: ${routeInfo.optionalParams.join(', ')}');
-    }
-
-    return buffer.toString();
-  }
-}
-
-/// Container for path parameters
-class PathParameters {
-  final List<String> required;
-  final List<String> optional;
-
-  const PathParameters({
-    required this.required,
-    required this.optional,
-  });
 }

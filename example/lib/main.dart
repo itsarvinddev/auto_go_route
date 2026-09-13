@@ -1,52 +1,44 @@
-// lib/main.dart
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import 'src/app_router.dart';
 import 'src/auth_service.dart';
 
-// Initialize services
-final authService = AuthService();
-final appRouter = AppRouter(authService: authService);
+/// The app's router. Built once, outside `build`, so hot reload does not
+/// discard the navigation stack.
+final appRouter = AppRouter();
+
+/// Runtime configuration lives here rather than in the annotation: the
+/// generated `buildRouter()` accepts every `GoRouter` option as a named
+/// argument, defaulting to what `@AutoGoRouteBase` declared.
+final router = appRouter.buildRouter(
+  refreshListenable: authService,
+  debugLogDiagnostics: kDebugMode,
+);
 
 void main() {
-  WidgetsFlutterBinding.ensureInitialized();
   runApp(
-    ChangeNotifierProvider.value(
-      value: authService,
-      child: MyApp(router: appRouter.router),
-    ),
+    ChangeNotifierProvider.value(value: authService, child: const ExampleApp()),
   );
 }
 
-class MyApp extends StatelessWidget {
-  final GoRouter router;
-
-  const MyApp({super.key, required this.router});
+/// The example application.
+class ExampleApp extends StatelessWidget {
+  /// Creates the app.
+  const ExampleApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp.router(
-      title: 'AutoGoRoute Example',
+      title: 'auto_go_route example',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        primarySwatch: Colors.deepPurple,
-        useMaterial3: true,
+        colorSchemeSeed: const Color(0xFF6750A4),
         brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF121212),
-        cardColor: const Color(0xFF1E1E1E),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF1E1E1E),
-          elevation: 0,
-        ),
-        bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-          backgroundColor: Color(0xFF1E1E1E),
-          selectedItemColor: Colors.deepPurpleAccent,
-          unselectedItemColor: Colors.grey,
-        ),
+        appBarTheme: const AppBarTheme(centerTitle: false),
       ),
       routerConfig: router,
-      debugShowCheckedModeBanner: false,
     );
   }
 }

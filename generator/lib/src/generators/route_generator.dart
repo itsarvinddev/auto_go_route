@@ -1,794 +1,383 @@
-// generator/lib/src/generators/route_generator.dart
-
 import 'dart:async';
 
-import 'package:analyzer/dart/element/element2.dart';
+import 'package:analyzer/dart/element/element.dart';
 import 'package:build/build.dart';
-import 'package:code_builder/code_builder.dart';
-import 'package:dart_style/dart_style.dart';
-import 'package:glob/glob.dart';
 import 'package:source_gen/source_gen.dart';
 
+import '../analysis/graph_resolver.dart';
+import '../analysis/route_collector.dart';
+import '../emit/route_emitter.dart';
+import '../model/route_model.dart';
 import '../utils/generator_utils.dart';
+import '../errors.dart';
 
-const autoGoRouteBaseChecker = TypeChecker.fromUrl(
-    'package:auto_go_route/src/annotations/auto_go_route.dart#AutoGoRouteBase');
-const autoGoRouteChecker = TypeChecker.fromUrl(
-    'package:auto_go_route/src/annotations/auto_go_route.dart#AutoGoRoute');
-const autoGoRouteShellChecker = TypeChecker.fromUrl(
-    'package:auto_go_route/src/annotations/auto_go_route.dart#AutoGoRouteShell');
-
+/// Generates a go_router configuration from `@AutoGoRoute` annotations.
+///
+/// Runs once per library, and produces output only for the library holding
+/// `@AutoGoRouteBase`. That library's part file carries the whole route tree,
+/// which is why discovery has to look beyond the input library.
 class AutoGoRouteGenerator extends Generator {
+  /// Creates the generator.
+  ///
+  /// [sourceGlobs] overrides which assets are scanned for annotations; it maps
+  /// to the `source_globs` builder option.
+  AutoGoRouteGenerator({List<String>? sourceGlobs})
+    : _collector = RouteCollector(sourceGlobs: sourceGlobs);
+
+  final RouteCollector _collector;
+
   @override
   FutureOr<String?> generate(LibraryReader library, BuildStep buildStep) async {
-    final annotatedElements = library.annotatedWith(autoGoRouteBaseChecker);
-
-    if (annotatedElements.isEmpty) return null;
-    if (annotatedElements.length > 1) {
-      throw InvalidGenerationSourceError(
-        'Only one @AutoGoRouteBase annotation is allowed per library',
+    final annotatedBases = library.annotatedWith(baseChecker).toList();
+    if (annotatedBases.isEmpty) return null;
+    if (annotatedBases.length > 1) {
+      throw routeError(
+        'Only one @AutoGoRouteBase is allowed per library; found '
+        '${annotatedBases.length}.',
+        element: annotatedBases[1].element,
       );
     }
 
-    final annotatedElement = annotatedElements.first;
-    final element = annotatedElement.element;
-    if (element is! ClassElement2) {
-      throw InvalidGenerationSourceError(
-        '@AutoGoRouteBase can only be applied to classes',
-        element: element,
+    final baseElement = annotatedBases.single.element;
+    if (baseElement is! ClassElement) {
+      throw routeError(
+        '@AutoGoRouteBase can only be applied to a class.',
+        element: baseElement,
       );
     }
 
-    try {
-      // Phase 1: Discovery
-      final allRoutes = await _findAllRoutes(buildStep);
-      final allShells = await _findAllShells(buildStep);
+    final base = _collector.readBase(
+      baseElement,
+      annotatedBases.single.annotation,
+    );
 
-      if (allRoutes.isEmpty && allShells.isEmpty) {
-        throw InvalidGenerationSourceError(
-          'No @AutoGoRoute or @AutoGoRouteShell annotated classes found in the project',
-          element: element,
-        );
-      }
-
-      // Phase 2: Graph Resolution
-      final resolvedGraph = _resolveRouteGraph(allRoutes, allShells);
-
-      // Phase 3: Code Generation
-      _validateRouteNames(resolvedGraph.routes, element);
-      final baseInfo = _extractBaseInfo(element, annotatedElement.annotation);
-      final generatedCode = await _generateRouteBase(baseInfo, resolvedGraph);
-
-      return DartFormatter(languageVersion: DartFormatter.latestLanguageVersion)
-          .format(generatedCode);
-    } catch (e, st) {
-      throw InvalidGenerationSourceError(
-        'Failed to generate routes for ${element.displayName}: $e\n$st',
-        element: element,
+    final discovered = await _collector.discover(
+      buildStep,
+      globs: base.sourceGlobs,
+    );
+    if (base.sourceGlobs == null &&
+        _collector.otherRouterLibraries.isNotEmpty) {
+      log.warning(
+        '${base.className} and the @AutoGoRouteBase in '
+        '${_collector.otherRouterLibraries.map((a) => a.path).join(', ')} both '
+        'scan the same sources, so each generated router contains every route '
+        'and both declare the same public route classes and helpers — importing '
+        'the two libraries together is ambiguous. Give each router '
+        '`sourceGlobs:` to split the route table between them.',
       );
     }
+    if (discovered.isEmpty) {
+      throw routeError(
+        'No @AutoGoRoute or @AutoGoRouteShell annotated widgets were found. '
+        'The generator scans this package\'s `lib/` directory.',
+        element: baseElement,
+        todo:
+            'Annotate at least one widget, or point the builder elsewhere with '
+            'the `source_globs` option in build.yaml.',
+      );
+    }
+
+    final skeletons = [for (final node in discovered) _skeletonOf(node)];
+    final graph = GraphResolver.resolve(skeletons, onWarning: log.warning);
+
+    final nodes = <String, NodeInfo>{};
+    for (final node in discovered) {
+      nodes[node.id] = _collector.read(
+        node,
+        pathParameterNames:
+            graph.pathParameterNames[node.id]?.toSet() ?? const {},
+        defaultCaseSensitive: base.caseSensitive,
+      );
+    }
+
+    _validateIdentifiers(nodes, baseElement, base);
+    _validateBranchEnums(nodes, graph, baseElement, base);
+    _validateBranchAnnotations(nodes, graph);
+    _validateReferences(nodes, base, baseElement, library.element);
+
+    return RouteEmitter(base: base, graph: graph, nodes: nodes).emit();
   }
 
-  void _validateRouteNames(List<ResolvedRouteInfo> routes, Element2 element) {
-    final seen = <String>{};
-    for (final route in routes) {
-      final name = route.info.name ?? _toLowerCamelCase(route.info.className);
-      if (!seen.add(name)) {
-        throw InvalidGenerationSourceError(
-          'Duplicate route name: $name. Route names must be unique.',
-          element: element,
+  NodeSkeleton _skeletonOf(DiscoveredNode node) {
+    final annotation = node.annotation;
+    final order = annotation.read('order');
+    final parent = annotation.read('parent');
+    String? parentId;
+    if (!parent.isNull) {
+      final type = parent.typeValue;
+      final element = type.element;
+      if (element == null) {
+        throw routeError(
+          '`parent` on ${node.element.displayName} does not resolve to a '
+          'class.',
+          element: node.element,
         );
       }
+      parentId = '${element.library?.uri}#${typeNameOf(type)}';
     }
+    return NodeSkeleton(
+      id: node.id,
+      className: node.element.displayName,
+      libraryUri: node.element.library.uri.toString(),
+      path: node.path,
+      isShell: node.isShell,
+      parentId: parentId,
+      order: order.isNull ? null : order.intValue,
+    );
   }
 
-  RouteGraph _resolveRouteGraph(
-      List<RouteInfo> routes, List<ShellInfo> shells) {
-    final allInfos = <dynamic>[...routes, ...shells];
-    final Map<String, dynamic> infoMap = {
-      for (var i in allInfos) (i as dynamic).className: i
+  /// Checks that no two nodes would generate the same Dart identifier.
+  ///
+  /// Uniqueness is checked on the *generated* names rather than on the raw
+  /// route names, because that is what actually has to be unique: `userProfile`
+  /// and `UserProfile` are different route names but both yield
+  /// `goToUserProfile`. Shells are included — 1.x checked routes only, so a
+  /// route and a shell could collide and emit two `FooRoute` classes.
+  void _validateIdentifiers(
+    Map<String, NodeInfo> nodes,
+    Element baseElement,
+    RouterBaseInfo base,
+  ) {
+    final byMethodName = <String, NodeInfo>{};
+    final byClassName = <String, NodeInfo>{};
+    // Names an enum value cannot take: members every enum declares, the two
+    // fields the generated enum adds, and Dart's reserved words.
+    const reserved = <String>{
+      'values', 'index', 'hashCode', 'runtimeType', 'toString', 'noSuchMethod',
+      'routeName', 'template', //
+      'assert', 'break', 'case', 'catch', 'class', 'const', 'continue',
+      'default', 'do', 'else', 'enum', 'extends', 'false', 'final', 'finally',
+      'for', 'if', 'in', 'is', 'new', 'null', 'rethrow', 'return', 'super',
+      'switch', 'this', 'throw', 'true', 'try', 'var', 'void', 'while', 'with',
     };
 
-    final resolvedRoutes = routes.map((route) {
-      final fullPath = _resolveNavigableFullPath(route, infoMap);
-      final fullParams = GeneratorUtils.extractParametersFromPath(fullPath);
-      final parentInfo = route.parent != null ? infoMap[route.parent] : null;
-      final parentNavigablePath =
-          _resolveNavigableFullPath(parentInfo, infoMap);
-
-      return ResolvedRouteInfo(
-        info: route,
-        navigableFullPath: fullPath,
-        fullRequiredParams: fullParams.required,
-        fullOptionalParams: fullParams.optional,
-        parentNavigablePath: parentNavigablePath,
-      );
-    }).toList();
-
-    final resolvedShells = shells.map((shell) {
-      if (shell.pageBuilder != null && shell.isStateful) {
-        throw InvalidGenerationSourceError(
-          '`pageBuilder` cannot be used with a stateful shell route. Please set `isStateful: false` for shell: ${shell.className}.',
+    for (final node in nodes.values) {
+      if (base.generateRouteEnum && reserved.contains(node.name)) {
+        throw routeError(
+          'Route name "${node.name}" on ${node.className} is reserved inside '
+          'the generated route enum — it is a Dart keyword or a member the '
+          'enum already declares — so the enum would not compile.',
+          element: baseElement,
+          todo:
+              'Rename the route, or set '
+              '`@AutoGoRouteBase(generateRouteEnum: false)`.',
         );
       }
-      return ResolvedShellInfo(info: shell);
-    }).toList();
 
-    return RouteGraph(routes: resolvedRoutes, shells: resolvedShells);
-  }
-
-  Future<List<T>> _findAllAnnotatedElements<T>(
-    BuildStep buildStep,
-    TypeChecker checker,
-    T Function(ClassElement2, ConstantReader) extractor,
-  ) async {
-    final results = <T>[];
-    await for (final input in buildStep.findAssets(Glob('lib/**/*.dart'))) {
-      try {
-        if (!await buildStep.resolver.isLibrary(input)) continue;
-        final lib = await buildStep.resolver.libraryFor(input);
-        final reader = LibraryReader(lib);
-        for (final annotatedElement in reader.annotatedWith(checker)) {
-          final element = annotatedElement.element;
-          if (element is ClassElement2) {
-            results.add(extractor(element, annotatedElement.annotation));
-          }
-        }
-      } catch (e) {
-        log.info('Warning: Could not resolve library ${input.path}. Error: $e');
+      final methodName = GeneratorUtils.toUpperCamelCase(node.name);
+      final existing = byMethodName[methodName];
+      if (existing != null) {
+        throw routeError(
+          '${node.className} and ${existing.className} both generate '
+          '`goTo$methodName`. Route names must be unique after '
+          'capitalisation — "${node.name}" and "${existing.name}" are not.',
+          element: baseElement,
+          todo: 'Give one of them an explicit, distinct `name:`.',
+        );
       }
-    }
-    return results;
-  }
+      byMethodName[methodName] = node;
 
-  Future<List<RouteInfo>> _findAllRoutes(BuildStep buildStep) =>
-      _findAllAnnotatedElements<RouteInfo>(
-        buildStep,
-        autoGoRouteChecker,
-        _extractRouteInfo,
-      );
-
-  Future<List<ShellInfo>> _findAllShells(BuildStep buildStep) =>
-      _findAllAnnotatedElements<ShellInfo>(
-        buildStep,
-        autoGoRouteShellChecker,
-        _extractShellInfo,
-      );
-
-  RouteBaseInfo _extractBaseInfo(
-      ClassElement2 element, ConstantReader annotation) {
-    return RouteBaseInfo(
-      className: element.displayName,
-      initialLocation:
-          annotation.read('initialLocation').literalValue as String?,
-      errorBuilder: annotation.read('errorBuilder').literalValue as String?,
-      redirect: annotation.read('redirect').literalValue as String?,
-      navigatorExtensionName:
-          annotation.read('navigatorExtensionName').stringValue,
-    );
-  }
-
-  RouteInfo _extractRouteInfo(
-      ClassElement2 element, ConstantReader annotation) {
-    final path = annotation.read('path').stringValue;
-    final name = annotation.read('name').isNull
-        ? _toLowerCamelCase(element.displayName)
-        : annotation.read('name').stringValue;
-
-    final parent = annotation.read('parent').isNull
-        ? null
-        : annotation.read('parent').typeValue.element3?.displayName;
-
-    final constructor = element.unnamedConstructor2;
-    final params = constructor?.formalParameters ?? [];
-
-    final pathParams = GeneratorUtils.extractParametersFromPath(path);
-
-    final constructorParamNames = params.map((p) => p.displayName).toSet();
-    final pathParamNames =
-        {...pathParams.required, ...pathParams.optional}.toSet();
-    final missingPathParams = pathParamNames.difference(constructorParamNames);
-
-    if (missingPathParams.isNotEmpty) {
-      throw InvalidGenerationSourceError(
-        'The following path parameters do not have corresponding constructor arguments: ${missingPathParams.join(', ')}',
-        element: element,
-      );
-    }
-
-    return RouteInfo(
-      className: element.displayName,
-      path: path,
-      name: name,
-      description: annotation.read('description').literalValue as String?,
-      middleware: annotation
-          .read('middleware')
-          .listValue
-          .map((e) => e.toStringValue()!)
-          .toList(),
-      constructorParams: params,
-      requiredParams: pathParams.required,
-      optionalParams: pathParams.optional,
-      importPath: _getImportPath(element),
-      parent: parent,
-      order: annotation.read('order').isNull
-          ? null
-          : annotation.read('order').intValue,
-    );
-  }
-
-  ShellInfo _extractShellInfo(
-      ClassElement2 element, ConstantReader annotation) {
-    return ShellInfo(
-      className: element.displayName,
-      path: annotation.read('path').stringValue,
-      name: annotation.read('name').isNull
-          ? null
-          : annotation.read('name').stringValue,
-      description: annotation.read('description').isNull
-          ? null
-          : annotation.read('description').stringValue,
-      navigatorKey: annotation.read('navigatorKey').isNull
-          ? null
-          : annotation.read('navigatorKey').stringValue,
-      importPath: _getImportPath(element),
-      parent: annotation.read('parent').isNull
-          ? null
-          : annotation.read('parent').typeValue.element3?.displayName,
-      isStateful: annotation.read('isStateful').boolValue,
-      initialRoute: annotation.read('initialRoute').isNull
-          ? null
-          : annotation.read('initialRoute').stringValue,
-      order: annotation.read('order').isNull
-          ? null
-          : annotation.read('order').intValue,
-      pageBuilder: annotation.read('pageBuilder').isNull
-          ? null
-          : annotation.read('pageBuilder').stringValue,
-    );
-  }
-
-  String? _getImportPath(ClassElement2 element) =>
-      element.library2.uri.toString();
-
-  String _toLowerCamelCase(String input) =>
-      input.isEmpty ? '' : input[0].toLowerCase() + input.substring(1);
-
-  String _toUpperCamelCase(String input) {
-    if (input.isEmpty) return '';
-    return input[0].toUpperCase() + input.substring(1);
-  }
-
-  String _resolveNavigableFullPath(dynamic info, Map<String, dynamic> infoMap) {
-    if (info == null) return '';
-
-    final ancestors = <dynamic>[];
-    dynamic current = info;
-    while (current != null) {
-      ancestors.insert(0, current);
-      current = (current as dynamic).parent != null
-          ? infoMap[(current).parent]
-          : null;
-    }
-
-    String currentPath = '';
-    for (final ancestor in ancestors) {
-      if (ancestor is! ShellInfo) {
-        final path = (ancestor as dynamic).path as String;
-        final effectiveParent = currentPath.endsWith('/')
-            ? currentPath.substring(0, currentPath.length - 1)
-            : currentPath;
-        final effectivePath = path.startsWith('/') ? path.substring(1) : path;
-
-        if (effectiveParent.isEmpty || effectiveParent == '/') {
-          currentPath = '/$effectivePath';
-        } else {
-          currentPath = '$effectiveParent/$effectivePath';
-        }
+      final className = '${node.className}Route';
+      final classClash = byClassName[className];
+      if (classClash != null) {
+        throw routeError(
+          'Two annotated widgets are both named ${node.className} '
+          '(${classClash.libraryUri} and ${node.libraryUri}), so both would '
+          'generate `class $className`.',
+          element: baseElement,
+          todo: 'Rename one of the widgets.',
+        );
       }
+      byClassName[className] = node;
     }
-    return currentPath.replaceAll('//', '/');
   }
 
-  Future<String> _generateRouteBase(
-    RouteBaseInfo baseInfo,
-    RouteGraph graph,
-  ) async {
-    final allWidgetClassNames = {
-      ...graph.routes.map((r) => r.info.className),
-      ...graph.shells.map((s) => s.info.className)
+  /// Checks that a stateful shell's children can be values of its generated
+  /// branch enum, and that the enum's name is free.
+  void _validateBranchEnums(
+    Map<String, NodeInfo> nodes,
+    ResolvedGraph graph,
+    Element baseElement,
+    RouterBaseInfo base,
+  ) {
+    if (!base.generateRouteEnum) return;
+    // Enum members every enum has, the members the branch enum adds, and
+    // Dart's reserved words.
+    const reserved = <String>{
+      'values', 'index', 'hashCode', 'runtimeType', 'toString', 'noSuchMethod',
+      'initialLocation', 'of', 'isActiveIn', 'go', 'goFrom', //
+      'assert', 'break', 'case', 'catch', 'class', 'const', 'continue',
+      'default', 'do', 'else', 'enum', 'extends', 'false', 'final', 'finally',
+      'for', 'if', 'in', 'is', 'new', 'null', 'rethrow', 'return', 'super',
+      'switch', 'this', 'throw', 'true', 'try', 'var', 'void', 'while', 'with',
     };
-    final typeDefs = allWidgetClassNames.map((className) {
-      return TypeDef((b) => b
-        ..name = '_RouteRef$className'
-        ..definition = refer(className));
-    });
-
-    final library = Library((b) {
-      b.ignoreForFile.add('unused_element');
-      b.body.addAll([
-        ...typeDefs,
-        _generateBaseClass(baseInfo, graph),
-        ...graph.routes.map((r) => _generateRouteClass(r)),
-        ...graph.shells.map((s) => _generateShellClass(s.info)),
-        _generateBuildContextExtension(baseInfo, graph),
-      ]);
-    });
-
-    return library
-        .accept(
-          DartEmitter(useNullSafetySyntax: true, orderDirectives: true),
-        )
-        .toString();
-  }
-
-  Class _generateBaseClass(
-    RouteBaseInfo baseInfo,
-    RouteGraph graph,
-  ) {
-    return Class((b) {
-      b.name = '_\$${baseInfo.className}';
-      b.abstract = true;
-      b.methods.addAll([
-        Method((m) => m
-          ..name = 'allRoutes'
-          ..returns = refer('List<RoutePaths>')
-          ..type = MethodType.getter
-          ..body = Code(
-              'return [${graph.routes.map((r) => '${_toLowerCamelCase(r.info.className)}Route').join(', ')}];')),
-        Method((m) => m
-          ..name = 'allShells'
-          ..returns = refer('List<ShellRoutePaths>')
-          ..type = MethodType.getter
-          ..body = Code(
-              'return [${graph.shells.map((s) => '${_toLowerCamelCase(s.info.className)}Route').join(', ')}];')),
-        _generateBuildNestedRoutesMethod(graph),
-        _generateBuildRouterMethod(baseInfo),
-        ...graph.routes.map((r) => Method((m) => m
-          ..name = '${_toLowerCamelCase(r.info.className)}Route'
-          ..type = MethodType.getter
-          ..returns = refer('${r.info.className}Route')
-          ..body = Code('return ${r.info.className}Route();'))),
-        ...graph.shells.map((s) => Method((m) => m
-          ..name = '${_toLowerCamelCase(s.info.className)}Route'
-          ..type = MethodType.getter
-          ..returns = refer('${s.info.className}Route')
-          ..body = Code('return ${s.info.className}Route();'))),
-      ]);
-    });
-  }
-
-  Method _generateBuildRouterMethod(RouteBaseInfo baseInfo) {
-    final errorBuilder = baseInfo.errorBuilder;
-    final errorBuilderCode = errorBuilder != null
-        ? 'errorBuilder: (context, state) => $errorBuilder(error: state.error),'
-        : '';
-
-    return Method((b) {
-      b.name = 'buildRouter';
-      b.returns = refer('GoRouter');
-      b.optionalParameters.add(Parameter((p) => p
-        ..name = 'navigatorKey'
-        ..type = refer('GlobalKey<NavigatorState>?')));
-      b.body = Code('''
-        return GoRouter(
-          ${baseInfo.initialLocation != null ? "initialLocation: '${baseInfo.initialLocation}'," : ""}
-          ${baseInfo.redirect != null ? "redirect: ${baseInfo.redirect}," : ""}
-          $errorBuilderCode
-          navigatorKey: navigatorKey,
-          routes: _buildNestedRoutes(),
+    final classNames = {for (final node in nodes.values) node.className};
+    for (final shell in nodes.values.whereType<ShellInfo>()) {
+      if (!shell.isStateful) continue;
+      final enumName = RouteEmitter.branchEnumName(shell);
+      if (classNames.contains(enumName)) {
+        throw routeError(
+          'The generated branch enum for ${shell.className} is named '
+          '`$enumName`, which is already an annotated widget.',
+          element: baseElement,
+          todo:
+              'Rename one of them, or set '
+              '`@AutoGoRouteBase(generateRouteEnum: false)`.',
         );
-      ''');
-    });
+      }
+      for (final childId in graph.childrenOf[shell.id] ?? const <String>[]) {
+        final child = nodes[childId]!;
+        if (reserved.contains(child.name)) {
+          throw routeError(
+            'Route name "${child.name}" on ${child.className} cannot be a value '
+            'of the generated `$enumName` enum: it is a Dart keyword or a '
+            'member the enum already declares.',
+            element: baseElement,
+            todo:
+                'Rename the route, or set '
+                '`@AutoGoRouteBase(generateRouteEnum: false)`.',
+          );
+        }
+      }
+    }
   }
 
-  Class _generateRouteClass(ResolvedRouteInfo resolvedRoute) {
-    return Class((b) {
-      b.name = '${resolvedRoute.info.className}Route';
-      b.extend = refer(resolvedRoute.info.parent != null
-          ? 'NestedRoutePaths'
-          : 'RoutePaths');
-      b.constructors.add(Constructor((c) {
-        c.initializers.add(Code(_generateRouteSuperCall(resolvedRoute)));
-      }));
+  /// Warns when `@AutoGoRouteBranch` is applied where it has no effect.
+  void _validateBranchAnnotations(
+    Map<String, NodeInfo> nodes,
+    ResolvedGraph graph,
+  ) {
+    for (final node in nodes.values) {
+      final branch = node is RouteInfo
+          ? node.branch
+          : (node as ShellInfo).branch;
+      if (branch == null) continue;
+      final parentId = node.parentId;
+      final parent = parentId == null ? null : nodes[parentId];
+      if (parent is! ShellInfo || !parent.isStateful) {
+        log.warning(
+          '${node.className} carries @AutoGoRouteBranch, which configures a '
+          'branch of a stateful shell, but its parent is '
+          '${parent == null ? 'not set' : '${parent.className} (not a stateful shell)'}. '
+          'The annotation is ignored.',
+        );
+      }
+    }
+  }
 
-      final pathWithMethod = _generatePathWithMethod(
-        resolvedRoute.fullRequiredParams,
-        resolvedRoute.fullOptionalParams,
+  /// Checks that every string-named function, key or constant resolves in the
+  /// router library's scope.
+  ///
+  /// Without this, a typo surfaces as `Undefined name 'authGaurd'` inside a
+  /// generated file the user is told not to edit. Here it surfaces as a build
+  /// error pointing at the annotation.
+  void _validateReferences(
+    Map<String, NodeInfo> nodes,
+    RouterBaseInfo base,
+    Element baseElement,
+    LibraryElement baseLibrary,
+  ) {
+    final references = <String, String>{};
+
+    void collect(String? reference, String where) {
+      if (reference == null) return;
+      references.putIfAbsent(
+        GeneratorUtils.rootIdentifierOf(reference),
+        () => where,
       );
-      b.methods.add(pathWithMethod);
-    });
-  }
-
-  Method _generatePathWithMethod(
-      List<String> requiredParams, List<String> optionalParams) {
-    final method = MethodBuilder()
-      ..name = 'pathWith'
-      ..returns = refer('String');
-
-    final paramsMap = <String, Expression>{};
-
-    for (final paramName in requiredParams) {
-      method.optionalParameters.add(Parameter((p) => p
-        ..name = paramName
-        ..named = true
-        ..required = true
-        ..type = refer('String')));
-      paramsMap[paramName] = refer(paramName);
     }
 
-    for (final paramName in optionalParams) {
-      method.optionalParameters.add(Parameter((p) => p
-        ..name = paramName
-        ..named = true
-        ..type = refer('String?')));
-      paramsMap[paramName] = refer(paramName);
-    }
+    collect(base.navigatorKey, '@AutoGoRouteBase(navigatorKey:)');
+    collect(base.redirect, '@AutoGoRouteBase(redirect:)');
+    collect(base.onEnter, '@AutoGoRouteBase(onEnter:)');
+    collect(base.onException, '@AutoGoRouteBase(onException:)');
+    collect(base.errorBuilder, '@AutoGoRouteBase(errorBuilder:)');
+    collect(base.errorPageBuilder, '@AutoGoRouteBase(errorPageBuilder:)');
+    collect(base.errorWidget, '@AutoGoRouteBase(errorWidget:)');
+    collect(base.observers, '@AutoGoRouteBase(observers:)');
+    collect(base.refreshListenable, '@AutoGoRouteBase(refreshListenable:)');
+    collect(base.extraCodec, '@AutoGoRouteBase(extraCodec:)');
+    collect(base.initialExtra, '@AutoGoRouteBase(initialExtra:)');
 
-    method.optionalParameters.add(Parameter((p) => p
-      ..name = 'queries'
-      ..named = true
-      ..type = refer('Map<String, String>?')));
-
-    final paramsCode = StringBuffer('{');
-    for (final entry in paramsMap.entries) {
-      if (optionalParams.contains(entry.key)) {
-        paramsCode
-            .write("if (${entry.key} != null) '${entry.key}': ${entry.key},");
-      } else {
-        paramsCode.write("'${entry.key}': ${entry.key},");
+    for (final node in nodes.values) {
+      final label = node.className;
+      for (final guard in node.middleware) {
+        collect(guard, '$label(middleware:)');
+      }
+      collect(node.redirect, '$label(redirect:)');
+      collect(node.parentNavigatorKey, '$label(parentNavigatorKey:)');
+      if (node is RouteInfo) {
+        collect(node.onExit, '$label(onExit:)');
+        collect(node.page.pageBuilder, '$label(pageBuilder:)');
+        collect(node.page.barrierColor, '$label(barrierColor:)');
+        final branch = node.branch;
+        if (branch != null) {
+          collect(branch.navigatorKey, '$label(branch navigatorKey:)');
+          collect(branch.observers, '$label(branch observers:)');
+        }
+      } else if (node is ShellInfo) {
+        collect(node.pageBuilder, '$label(pageBuilder:)');
+        collect(node.navigatorKey, '$label(navigatorKey:)');
+        collect(node.observers, '$label(observers:)');
+        collect(
+          node.navigatorContainerBuilder,
+          '$label(navigatorContainerBuilder:)',
+        );
       }
     }
-    paramsCode.write('}');
 
-    method.body = Code('return pathWithParams($paramsCode, queries: queries);');
-    return method.build();
-  }
-
-  String _generateRouteSuperCall(ResolvedRouteInfo resolvedRoute) {
-    final r = resolvedRoute.info;
-    final buffer = StringBuffer('super(');
-    if (r.parent != null) {
-      buffer.writeln("parentPath: '${resolvedRoute.parentNavigablePath}',");
-    }
-    buffer.writeln("path: '${r.path}',");
-    if (r.name != null) buffer.writeln("name: '${r.name}',");
-    if (r.description != null) {
-      buffer.writeln("description: r'''${r.description}''',");
-    }
-    if (r.middleware.isNotEmpty) {
-      buffer.writeln("middleware: const [${r.middleware.join(', ')}],");
-    }
-    buffer.writeln("builder: ${_generateBuilderFunction(r)},");
-    buffer.writeln(')');
-    return buffer.toString();
-  }
-
-  String _generateBuilderFunction(RouteInfo r) {
-    final buffer = StringBuffer('(context, state) => ${r.className}(');
-    final simpleTypes = {'String', 'int', 'double', 'bool'};
-
-    final args =
-        r.constructorParams.where((p) => p.displayName != 'key').map((p) {
-      final typeName = p.type.getDisplayString();
-      final fullTypeName = p.type.getDisplayString();
-      final String access;
-
-      if (simpleTypes.any((t) => typeName.startsWith(t))) {
-        access = "state.getParam<$typeName>('${p.displayName}')";
-      } else {
-        access = "state.extra as $fullTypeName";
-      }
-
-      return p.isNamed ? '${p.displayName}: $access' : access;
-    }).join(', ');
-
-    buffer.write(args);
-    buffer.write(')');
-    return buffer.toString();
-  }
-
-  Class _generateShellClass(ShellInfo shell) {
-    return Class((b) {
-      b.name = '${shell.className}Route';
-      b.extend = refer('ShellRoutePaths');
-      b.constructors.add(Constructor((c) {
-        c.initializers.add(Code(_generateShellSuperCall(shell)));
-      }));
-    });
-  }
-
-  String _generateShellSuperCall(ShellInfo shell) {
-    final builderParam = shell.isStateful
-        ? 'navigationShell: child as StatefulNavigationShell'
-        : 'child: child';
-
-    return '''
-      super(
-        path: '${shell.path}',
-        ${shell.name != null ? "name: '${shell.name}'," : ''}
-        ${shell.description != null ? "description: r'''${shell.description}'''," : ''}
-        ${shell.navigatorKey != null ? "navigatorKey: ${shell.navigatorKey}," : ''}
-        isStateful: ${shell.isStateful},
-        builder: (context, state, child) => ${shell.className}($builderParam),
-      )
-    ''';
-  }
-
-  Method _generateBuildNestedRoutesMethod(
-    RouteGraph graph,
-  ) {
-    return Method((b) {
-      b.name = '_buildNestedRoutes';
-      b.returns = refer('List<RouteBase>');
-
-      final allResolved = <dynamic>[...graph.routes, ...graph.shells];
-      final Map<String, dynamic> infoMap = {
-        for (var i in allResolved) (i.info as dynamic).className: i.info
-      };
-
-      final childrenMap = <String, List<dynamic>>{};
-      final topLevel = <dynamic>[];
-
-      for (final i in allResolved) {
-        final parent = (i.info as dynamic).parent;
-        if (parent != null && infoMap.containsKey(parent)) {
-          childrenMap.putIfAbsent(parent, () => []).add(i.info);
-        } else {
-          topLevel.add(i.info);
+    // The emitted part also names every annotated widget, and every type it
+    // passes through a codec or `extra`. Those have to be visible from the
+    // router library too — a forgotten widget import, or a type imported only
+    // under a prefix (the emitted code spells it unprefixed), used to surface
+    // as `Undefined name` inside the generated file.
+    const builtIns = {'dynamic', 'void', 'Never', 'Null', 'Function'};
+    final identifier = RegExp(r'[A-Za-z_$][\w$]*');
+    for (final node in nodes.values) {
+      references.putIfAbsent(
+        node.className,
+        () =>
+            'the @${node is ShellInfo ? 'AutoGoRouteShell' : 'AutoGoRoute'} '
+            'widget in ${node.libraryUri}',
+      );
+      if (node is! RouteInfo) continue;
+      for (final param in node.params) {
+        for (final match in identifier.allMatches(param.typeSource)) {
+          final name = match.group(0)!;
+          if (builtIns.contains(name)) continue;
+          references.putIfAbsent(
+            name,
+            () => 'the type of `${param.dartName}` on ${node.className}',
+          );
         }
-      }
-
-      String build(dynamic info) {
-        final instance = '${_toLowerCamelCase(info.className)}Route';
-        final children = childrenMap[info.className] ?? [];
-
-        children.sort((a, b) => ((a as dynamic).order ?? 999)
-            .compareTo((b as dynamic).order ?? 999));
-
-        if (info is ShellInfo) {
-          final childRoutesCode = children.map(build).join(',');
-
-          if (info.pageBuilder != null) {
-            return '''
-              ShellRoute(
-                pageBuilder: ${info.pageBuilder},
-                routes: [$childRoutesCode],
-              )
-            ''';
-          }
-
-          if (info.isStateful) {
-            final branchesCode = children
-                .map(
-                    (child) => 'StatefulShellBranch(routes: [${build(child)}])')
-                .join(',');
-            return 'StatefulShellRoute.indexedStack(builder: $instance.builder, branches: [$branchesCode])';
-          } else {
-            return '$instance.toShellRoute(routes: [$childRoutesCode])';
-          }
-        } else {
-          // RouteInfo
-          final childRoutesCode = children.map(build).join(',');
-          return '$instance.toGoRoute(routes: [$childRoutesCode])';
-        }
-      }
-
-      final topLevelRoutes = topLevel.map(build).toList();
-      final rootShellInfo = graph.shells
-          .cast<ResolvedShellInfo?>()
-          .firstWhere((s) => s?.info.path == '/', orElse: () => null);
-
-      if (rootShellInfo != null) {
-        final rootShell = rootShellInfo.info;
-        final childrenOfRoot = childrenMap[rootShell.className] ?? [];
-        childrenOfRoot.sort((a, b) => ((a as dynamic).order ?? 999)
-            .compareTo((b as dynamic).order ?? 999));
-
-        String? redirectPath = rootShell.initialRoute;
-        if (redirectPath == null && childrenOfRoot.isNotEmpty) {
-          redirectPath =
-              _resolveNavigableFullPath(childrenOfRoot.first, infoMap);
-        }
-
-        final shellItselfCode = build(rootShell);
-
-        if (redirectPath != null) {
-          topLevelRoutes.removeWhere((r) => r.contains(
-              "builder: ${_toLowerCamelCase(rootShell.className)}Route.builder"));
-          final wrapper = '''
-              GoRoute(
-                path: '${rootShell.path}',
-                redirect: (context, state) {
-                  if (state.uri.path == '${rootShell.path}') {
-                    return '$redirectPath';
-                  }
-                  return null;
-                },
-                routes: [
-                  $shellItselfCode
-                ],
-              )
-            ''';
-          topLevelRoutes.add(wrapper);
-        }
-      }
-
-      b.body = Code('return [${topLevelRoutes.join(',')}];');
-    });
-  }
-
-  Extension _generateBuildContextExtension(
-    RouteBaseInfo baseInfo,
-    RouteGraph graph,
-  ) {
-    final extension = ExtensionBuilder()
-      ..name = baseInfo.navigatorExtensionName
-      ..on = refer('BuildContext');
-
-    for (final route in graph.routes) {
-      final requiredParams = route.fullRequiredParams;
-      final optionalParams = route.fullOptionalParams;
-
-      final pathParamsList = [...requiredParams, ...optionalParams];
-      final pathParamsCall = pathParamsList.map((p) => '$p: $p').join(', ');
-      final queriesCall = 'queries: queries';
-
-      final allHelperParams =
-          [pathParamsCall, queriesCall].where((s) => s.isNotEmpty).join(', ');
-
-      final pathCall =
-          '${route.info.className}Route().pathWith($allHelperParams)';
-
-      final routeName =
-          _toUpperCamelCase(route.info.name ?? route.info.className);
-
-      final extraParam = Parameter((p) => p
-        ..name = 'extra'
-        ..named = true
-        ..type = refer('Object?'));
-
-      final queriesParam = Parameter((p) => p
-        ..name = 'queries'
-        ..named = true
-        ..type = refer('Map<String, String>?'));
-
-      // Go method
-      final goMethod = MethodBuilder()
-        ..name = 'goTo$routeName'
-        ..returns = refer('void')
-        ..body = Code('go($pathCall, extra: extra);');
-
-      // Push method
-      final pushMethod = MethodBuilder()
-        ..name = 'pushTo$routeName<T extends Object?>'
-        ..returns = refer('Future<T?>')
-        ..body = Code('return push<T>($pathCall, extra: extra);');
-
-      // Replace method
-      final replaceMethod = MethodBuilder()
-        ..name = 'replaceWith$routeName'
-        ..returns = refer('void')
-        ..body = Code('pushReplacement($pathCall, extra: extra);');
-
-      for (final method in [goMethod, pushMethod, replaceMethod]) {
-        for (final paramName in requiredParams) {
-          method.optionalParameters.add(Parameter((p) => p
-            ..name = paramName
-            ..named = true
-            ..required = true
-            ..type = refer('String')));
-        }
-        for (final paramName in optionalParams) {
-          method.optionalParameters.add(Parameter((p) => p
-            ..name = paramName
-            ..named = true
-            ..type = refer('String?')));
-        }
-
-        method.optionalParameters.add(queriesParam);
-        method.optionalParameters.add(extraParam);
-
-        extension.methods.add(method.build());
       }
     }
-    return extension.build();
+
+    if (references.isEmpty) return;
+
+    final scope = baseLibrary.firstFragment.scope;
+    final missing = <String, String>{};
+    for (final entry in references.entries) {
+      final result = scope.lookup(entry.key);
+      if (result.getter == null && result.setter == null) {
+        missing[entry.key] = entry.value;
+      }
+    }
+    if (missing.isEmpty) return;
+
+    final details = missing.entries
+        .map((e) => '  • `${e.key}` (from ${e.value})')
+        .join('\n');
+    throw routeError(
+      'The generated file is a `part of` '
+      '${baseLibrary.uri}, so every widget, parameter type, function, key '
+      'and constant it refers to has to be visible from that library. These '
+      'are not:\n'
+      '$details',
+      element: baseElement,
+      todo:
+          'Import or declare them in ${baseLibrary.uri}, and check the '
+          'spelling.',
+    );
   }
-}
-
-class RouteGraph {
-  final List<ResolvedRouteInfo> routes;
-  final List<ResolvedShellInfo> shells;
-  RouteGraph({required this.routes, required this.shells});
-}
-
-class ResolvedRouteInfo {
-  final RouteInfo info;
-  final String navigableFullPath;
-  final String parentNavigablePath;
-  final List<String> fullRequiredParams;
-  final List<String> fullOptionalParams;
-
-  ResolvedRouteInfo({
-    required this.info,
-    required this.navigableFullPath,
-    required this.parentNavigablePath,
-    required this.fullRequiredParams,
-    required this.fullOptionalParams,
-  });
-}
-
-class ResolvedShellInfo {
-  final ShellInfo info;
-  ResolvedShellInfo({required this.info});
-}
-
-class RouteBaseInfo {
-  final String className;
-  final String? initialLocation;
-  final String? errorBuilder;
-  final String? redirect;
-  final String navigatorExtensionName;
-  const RouteBaseInfo(
-      {required this.className,
-      this.initialLocation,
-      this.errorBuilder,
-      this.redirect,
-      required this.navigatorExtensionName});
-}
-
-class RouteInfo {
-  final String className;
-  final String path;
-  final String? name;
-  final String? description;
-  final List<String> middleware;
-  final List<FormalParameterElement> constructorParams;
-  final String? importPath;
-  final String? parent;
-  final int? order;
-  final List<String> requiredParams;
-  final List<String> optionalParams;
-
-  const RouteInfo({
-    required this.className,
-    required this.path,
-    this.name,
-    this.description,
-    required this.middleware,
-    required this.constructorParams,
-    this.importPath,
-    this.parent,
-    this.order,
-    required this.requiredParams,
-    required this.optionalParams,
-  });
-}
-
-class ShellInfo {
-  final String className;
-  final String path;
-  final String? name;
-  final String? description;
-  final String? navigatorKey;
-  final String? importPath;
-  final String? parent;
-  final bool isStateful;
-  final String? initialRoute;
-  final int? order;
-  final String? pageBuilder;
-
-  const ShellInfo({
-    required this.className,
-    required this.path,
-    this.name,
-    this.description,
-    this.navigatorKey,
-    this.importPath,
-    this.parent,
-    required this.isStateful,
-    this.initialRoute,
-    this.order,
-    this.pageBuilder,
-  });
 }

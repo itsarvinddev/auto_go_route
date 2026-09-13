@@ -1,0 +1,16 @@
+include: package:lints/recommended.yaml
+
+analyzer:
+  language:
+    strict-casts: true
+    strict-inference: true
+    strict-raw-types: true
+
+linter:
+  rules:
+    # The generator is a published package: every public member needs a doc
+    # comment, since pub.dev's score and the reader's understanding both
+    # depend on it.
+    - public_member_api_docs
+    - prefer_single_quotes
+    - unawaited_futures
